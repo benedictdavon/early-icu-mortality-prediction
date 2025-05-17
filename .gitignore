@@ -1,0 +1,10 @@
+# .gitignore
+__MACOSX/
+*.ipynb_checkpoints
+*.pyc
+*.pkl
+*.csv
+*.zip
+*.mat
+data/
+results/
