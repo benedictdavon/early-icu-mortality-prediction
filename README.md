@@ -37,19 +37,42 @@ Early prediction can help inform clinical decisions and potentially save lives.
 
 ## ⚙️ Pipeline
 
-1. **Cohort Selection**
-2. **Feature Extraction**
-3. **Data Preprocessing**
+1. **Cohort Selection** ✅
+   - Total patients in MIMIC database: 17316
+   - Patients with ICU stays: 17316
+   - Filtered to first ICU stay only: 17316
+     - Excluded: 0 repeat ICU stays
+   - Final cohort with ≥6 hours of records: 16922
+     - Excluded: 389 patients with <6 hours of records
+
+2. **Feature Extraction** ✅
+   - Demographics:
+     - Age, gender
+     - BMI (calculated from height and weight)
+   - Vital signs (with statistical aggregations):
+     - Heart rate, respiratory rate, blood pressure (SBP, DBP, MAP)
+     - Temperature, SpO2
+   - Lab results (with statistical aggregations):
+     - Complete blood count (WBC, hemoglobin, platelets, etc.)
+     - Chemistry (sodium, potassium, creatinine, BUN, etc.)
+     - Liver function (bilirubin, alkaline phosphatase)
+     - Others (lactate, bicarbonate, anion gap)
+   - Prior diagnoses information
+
+3. **Data Preprocessing** 🔄
    - Handling missing values and outliers
    - Normalization
    - Time-window aggregation
-4. **Model Development**
-   - Classical models (e.g., Logistic Regression, XGBoost)
+
+4. **Model Development** 📝
+   - Classical models (Logistic Regression, XGBoost)
    - Deep learning (optional)
-5. **Evaluation**
+
+5. **Evaluation** 📝
    - Metrics: Accuracy, Precision, Recall, F1-score, AUC
    - Cross-validation and test split
-6. **Conclusion & Insights**
+
+6. **Conclusion & Insights** 📝
 
 ---
 
@@ -67,25 +90,28 @@ _Results are preliminary and subject to tuning._
 ## 📂 Repository Structure
 
 ```bash
-├── data/                 # Processed datasets (excluded from Git)
-├── notebooks/            # Jupyter notebooks for EDA, preprocessing, training
-├── src/                  # Python scripts for modeling and preprocessing
-├── results/              # Evaluation results, plots, and outputs
-├── figures/              # Diagrams and flowcharts
+├── data/                     # Processed datasets (excluded from Git)
+├── notebooks/                # Jupyter notebooks for EDA, preprocessing, training
+├── src/                      # Python scripts for modeling and preprocessing
+│   ├── cohort_selection.py   # Cohort selection pipeline
+│   ├── feature_extraction.py # Feature extraction from MIMIC-IV
+│   ├── config.py             # Configuration settings
+├── results/                  # Evaluation results, plots, and outputs
+├── figures/                  # Diagrams and flowcharts
 ├── README.md
 ```
 
 ---
 
-## 📊 Visualization
+<!-- ## 📊 Visualization
 
 - Cohort selection flowchart  
 - Feature distributions  
 - Model performance ROC curves  
 
-_(See `/figures` or `/notebooks/EDA.ipynb`)_
+_(See `/figures` or `/notebooks/analysis.ipynb`)_
 
----
+--- -->
 
 ## 👨‍🏫 Team
 
