@@ -59,10 +59,32 @@ Early prediction can help inform clinical decisions and potentially save lives.
      - Others (lactate, bicarbonate, anion gap)
    - Prior diagnoses information
 
-3. **Data Preprocessing** 🔄
-   - Handling missing values and outliers
-   - Normalization
-   - Time-window aggregation
+3. **Data Preprocessing** ✅
+   - Missing data handling:
+     - Dropped features with >80% missing values (except BMI)
+     - Created missingness indicators for features with 20-80% missing
+     - Applied median imputation for clinical features
+     - Used KNN imputation for features with <5% missing
+   - Outlier handling:
+     - Applied clinical range constraints:
+       - Heart rate: 30-200 bpm
+       - Respiratory rate: 5-60 breaths/min
+       - MAP: 40-180 mmHg
+       - SBP: 60-220 mmHg
+       - SpO2: 60-100%
+     - Used Winsorizing (1%-99% percentile capping) for skewed variables
+   - Feature transformations:
+     - Log transformation for highly skewed features (skew > 2)
+     - Standardization using RobustScaler (resistant to outliers)
+   - Feature engineering:
+     - Created SIRS criteria count for sepsis risk
+     - Added shock index (HR/SBP) for hemodynamic status
+     - Added BUN:creatinine ratio for kidney function
+     - Calculated hypoxemia flag (SpO2 < 92%)
+   - Feature selection:
+     - Removed highly correlated features (r > 0.85)
+     - Preserved key clinical variables (vitals, labs, demographics)
+     - Applied variance-based filtering for low-information features
 
 4. **Model Development** 📝
    - Classical models (Logistic Regression, XGBoost)

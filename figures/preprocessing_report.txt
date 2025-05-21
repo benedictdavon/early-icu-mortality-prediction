@@ -1,0 +1,61 @@
+=== Data Preprocessing Report ===
+Original data shape: 16922 rows, 143 columns
+Processed data shape: 16922 rows, 107 columns
+Features dropped: 43
+New features created: 7
+Missing values before: 485878
+Missing values after: 16922
+
+New features created:
+- alkaline_phosphatase_log_missing
+- duration_hours_log
+- glucose_delta_missing
+- map_mean_missing
+- spo2_mean_log
+- temp_min_log
+- wbc_delta_missing
+
+Features dropped:
+- alkaline_phosphatase_log
+- alkaline_phosphatase_mean
+- alkaline_phosphatase_measured
+- anchor_year
+- anion_gap_mean
+- anion_gap_measured
+- bicarbonate_max
+- bicarbonate_measured
+- bilirubin_log
+- bilirubin_mean
+- bilirubin_measured
+- bun_log
+- bun_measured
+- chloride_max
+- chloride_measured
+- creatinine_log
+- creatinine_max
+- creatinine_measured
+- dbp_measured
+- glucose_measured
+- heart_rate_measured
+- hematocrit_max
+- hematocrit_mean
+- hematocrit_measured
+- hemoglobin_delta
+- hemoglobin_measured
+- lactate_log
+- map_measured
+- platelets_max
+- platelets_measured
+- potassium_max
+- potassium_measured
+- sbp_measured
+- sodium_max
+- sodium_measured
+- spo2_measured
+- subject_id_x
+- subject_id_y
+- temp_max
+- temp_min
+- wbc_log
+- wbc_max
+- wbc_measured
