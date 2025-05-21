@@ -114,10 +114,11 @@ Early prediction can help inform clinical decisions and potentially save lives.
 | Model               | AUC    | Accuracy | Precision | Recall | F1-Score |
 |--------------------|--------|----------|-----------|--------|----------|
 | Random Forest      | 0.8145 | 0.7900   | 0.4971    | 0.6091 | 0.5474   |
-| Logistic Regression| -      | -        | -         | -      | -        |
+| Logistic Regression| 0.7876 | 0.7439   | 0.4244    | 0.6402 | 0.5104   |
 | XGBoost            | -      | -        | -         | -      | -        |
 
 ### Top 10 Important Features from Random Forest:
+*(Values represent Gini importance - the relative contribution to reducing impurity)*
 1. Age (0.0527)
 2. Anchor age (0.0506)
 3. Previous diagnosis count (0.0444)
@@ -129,12 +130,27 @@ Early prediction can help inform clinical decisions and potentially save lives.
 9. SpO2 (mean) (0.0265)
 10. Temperature (mean) (0.0262)
 
+### Top 10 Important Features from Logistic Regression:
+*(Values represent standardized coefficients - the relative effect size on log-odds of mortality)*
+1. Age (0.6477)
+2. Heart rate percent change (0.5329)
+3. Shock index (0.5050)
+4. SpO2 mean distance from normal (0.5025)
+5. Heart rate mean (-0.5004) *negative effect*
+6. Lactate mean log (0.4899)
+7. Heart rate min (0.3769)
+8. Lactate max log (-0.3704) *negative effect*
+9. Temperature max (0.3570)
+10. Previous diagnosis count (0.3466)
+
 ### Key Findings:
-- Demographic factors (age) are strongly predictive of mortality
+- Demographic factors (age) are strongly predictive of mortality across all models
 - Respiratory parameters emerge as critical predictors
-- The derived feature "shock index" demonstrates significant predictive value
-- Feature engineering (log transformations, clinical indicators) improved model performance
-- Model achieves good discrimination with AUC of 0.8145
+- The derived feature "shock index" demonstrates significant predictive value in both models
+- Heart rate variability (percent change) is a strong predictor in the logistic regression model
+- Logistic regression identified negative associations between mortality and heart rate mean and lactate max log
+- Random Forest achieves better overall discrimination with higher AUC (0.8145 vs 0.7876)
+- Logistic regression shows slightly better recall (0.6402 vs 0.6091) but lower precision
 
 _Model evaluation based on 5-fold cross-validation and testing on 20% held-out data._
 _Results are preliminary and subject to tuning._
