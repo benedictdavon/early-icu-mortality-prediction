@@ -224,6 +224,47 @@ def add_clinical_derived_features(features_df):
     print(f"Added {len(df.columns) - len(features_df.columns)} new clinical features")
     return df
 
+def add_mortality_labels(features, label_path):
+    """Add mortality outcome labels to feature dataset"""
+    print("Adding mortality outcome labels...")
+    
+    # Initialize all patients with mortality = 0
+    features_with_labels = features.copy()
+    features_with_labels['mortality'] = 0
+    
+    try:
+        # Load mortality labels (only contains patients who died)
+        mortality_labels = pd.read_csv(os.path.join(label_path, '_label_death.csv'))
+        print(f"Loaded mortality data for {len(mortality_labels)} patients who died")
+        
+        # Check required columns
+        if 'subject_id' not in mortality_labels.columns:
+            print("Warning: 'subject_id' not found in mortality labels file")
+            return features_with_labels
+            
+        # Get list of subject_ids for patients who died
+        died_subject_ids = set(mortality_labels['subject_id'])
+        
+        # Set mortality = 1 for patients who are in the death file
+        features_with_labels.loc[features_with_labels['subject_id'].isin(died_subject_ids), 'mortality'] = 1
+        
+        # Report mortality rate
+        mortality_count = features_with_labels['mortality'].sum()
+        total_patients = len(features_with_labels)
+        mortality_rate = mortality_count / total_patients
+        
+        print(f"Found {mortality_count} deaths out of {total_patients} patients")
+        print(f"Overall mortality rate: {mortality_rate:.2%}")
+        
+    except FileNotFoundError:
+        print(f"Warning: Mortality labels file not found at {os.path.join(label_path, '_label_death.csv')}")
+        print("Proceeding with all patients marked as non-mortality (mortality=0)")
+    except Exception as e:
+        print(f"Error processing mortality labels: {str(e)}")
+        print("Proceeding with all patients marked as non-mortality (mortality=0)")
+        
+    return features_with_labels
+
 def time_weighted_vital_avg(values, times):
     """Calculate time-weighted average for vital sign measurements."""
     if len(values) <= 1:
@@ -616,6 +657,65 @@ def extract_prior_diagnoses(features, hosp_path):
     print(f"Extracted prior diagnosis information for {len(prior_dx_df)} patients")
     return prior_dx_df
 
+
+def create_clinical_interaction_features(df):
+    """
+    Create interaction features between clinically relevant variables 
+    that may improve model predictive performance.
+    """
+    print("Creating clinical interaction features...")
+    df = df.copy()
+    
+    # Track created features
+    created_features = []
+    
+    # 1. Shock Index × Age - represents age-adjusted risk from shock
+    if all(col in df.columns for col in ['shock_index', 'age']):
+        df['shock_index_x_age'] = df['shock_index'] * df['age']
+        created_features.append('shock_index_x_age')
+    
+    # 2. BUN/Creatinine ratio × Age - kidney function deteriorates with age
+    if all(col in df.columns for col in ['bun_creatinine_ratio', 'age']):
+        df['bun_creat_ratio_x_age'] = df['bun_creatinine_ratio'] * df['age']
+        created_features.append('bun_creat_ratio_x_age')
+    
+    # 3. Lactate × Anion Gap - combined metabolic derangement
+    if all(col in df.columns for col in ['lactate_mean', 'anion_gap_max']):
+        df['lactate_x_anion_gap'] = df['lactate_mean'] * df['anion_gap_max']
+        created_features.append('lactate_x_anion_gap')
+    
+    # 4. Previous diagnosis count × Age - comorbidity burden increases with age
+    if all(col in df.columns for col in ['prev_dx_count_total', 'age']):
+        df['prev_dx_count_x_age'] = df['prev_dx_count_total'] * df['age']
+        created_features.append('prev_dx_count_x_age')
+    
+    # 5. Respiratory rate × SpO2 indicator - breathing effort vs oxygenation
+    if all(col in df.columns for col in ['resp_rate_mean', 'spo2_min']):
+        # Low SpO2 with high resp rate indicates respiratory distress
+        df['resp_distress'] = df['resp_rate_mean'] * (100 - df['spo2_min'])
+        created_features.append('resp_distress')
+    
+    # 6. MAP variance × Lactate - hemodynamic instability with tissue perfusion
+    if all(col in df.columns for col in ['sbp_min', 'sbp_max', 'lactate_mean']):
+        map_variance = df['sbp_max'] - df['sbp_min']
+        df['map_variance_x_lactate'] = map_variance * df['lactate_mean']
+        created_features.append('map_variance_x_lactate')
+    
+    # 7. Heart rate / systolic BP - another shock measure
+    if all(col in df.columns for col in ['heart_rate_max', 'sbp_min']):
+        df['hr_sbp_ratio'] = df['heart_rate_max'] / df['sbp_min'].replace(0, np.nan)
+        # Replace infinities with NaNs to be handled by imputation later
+        df['hr_sbp_ratio'].replace([np.inf, -np.inf], np.nan, inplace=True)
+        created_features.append('hr_sbp_ratio')
+    
+    # 8. SIRS criteria × Lactate - sepsis risk indicator
+    if all(col in df.columns for col in ['sirs_criteria_count', 'lactate_mean']):
+        df['sirs_x_lactate'] = df['sirs_criteria_count'] * df['lactate_mean']
+        created_features.append('sirs_x_lactate')
+    
+    print(f"Created {len(created_features)} interaction features: {', '.join(created_features)}")
+    return df
+
 def generate_table_one(features, output_dir, group_col=None):
     """
     Generate a Table One summarizing patient characteristics.
@@ -907,6 +1007,9 @@ def main():
     # Add clinically meaningful derived features
     features = add_clinical_derived_features(features)
     
+    # Add mortality outcome labels
+    features = add_mortality_labels(features, label_path)
+        
     # Save features and generate statistics
     final_features, stats = save_features(features, output_dir)
     

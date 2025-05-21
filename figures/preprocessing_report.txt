@@ -1,61 +1,140 @@
 === Data Preprocessing Report ===
-Original data shape: 16922 rows, 143 columns
-Processed data shape: 16922 rows, 107 columns
-Features dropped: 43
-New features created: 7
+Original data shape: 16922 rows, 144 columns
+Processed data shape: 16922 rows, 61 columns
+Features dropped: 106
+New features created: 23
 Missing values before: 485878
-Missing values after: 16922
+Missing values after: 0
 
 New features created:
-- alkaline_phosphatase_log_missing
-- duration_hours_log
-- glucose_delta_missing
-- map_mean_missing
+- dbp_pct_change
+- heart_rate_delta
+- heart_rate_mean_dist_from_normal
+- heart_rate_mean_squared
+- heart_rate_pct_change
+- lactate_max_log
+- lactate_mean_dist_from_normal
+- lactate_mean_log
+- resp_rate_mean_dist_from_normal
+- resp_rate_mean_squared
+- resp_rate_pct_change
+- sbp_delta
+- sbp_mean_dist_from_normal
+- sbp_mean_squared
+- sbp_pct_change
+- spo2_delta
+- spo2_mean_dist_from_normal
 - spo2_mean_log
-- temp_min_log
-- wbc_delta_missing
+- spo2_mean_squared
+- spo2_pct_change
+- temp_max_log
+- temp_mean_log
+- temp_mean_squared
 
 Features dropped:
+- admittime
+- admittime_year
+- alkaline_phosphatase_delta
 - alkaline_phosphatase_log
+- alkaline_phosphatase_max
 - alkaline_phosphatase_mean
 - alkaline_phosphatase_measured
-- anchor_year
+- anchor_age
+- anion_gap_delta
+- anion_gap_max
 - anion_gap_mean
 - anion_gap_measured
+- bicarbonate_delta
 - bicarbonate_max
+- bicarbonate_mean
 - bicarbonate_measured
+- bilirubin_delta
 - bilirubin_log
+- bilirubin_max
 - bilirubin_mean
 - bilirubin_measured
+- bmi_measured
+- bun_creatinine_ratio
+- bun_delta
 - bun_log
+- bun_max
 - bun_measured
+- chloride_delta
 - chloride_max
+- chloride_mean
 - chloride_measured
+- creatinine_delta
 - creatinine_log
 - creatinine_max
 - creatinine_measured
+- dbp_max
 - dbp_measured
+- gender
+- gender_numeric
+- glucose_delta
+- glucose_max
 - glucose_measured
+- has_abnormal_wbc
+- has_fever_or_hypothermia
+- has_prior_diagnoses
+- has_tachycardia
+- has_tachypnea
 - heart_rate_measured
+- hematocrit_delta
 - hematocrit_max
 - hematocrit_mean
 - hematocrit_measured
 - hemoglobin_delta
+- hemoglobin_max
 - hemoglobin_measured
+- icu_stay_seq
+- lactate_delta
 - lactate_log
+- lactate_measured
+- map_max
 - map_measured
+- map_min
+- platelets_delta
+- platelets_log
 - platelets_max
 - platelets_measured
+- potassium_delta
 - potassium_max
+- potassium_mean
 - potassium_measured
+- prev_dx_blood_disorders_count
+- prev_dx_circulatory_count
+- prev_dx_congenital_anomalies_count
+- prev_dx_digestive_count
+- prev_dx_endocrine_metabolic_count
+- prev_dx_external_causes_count
+- prev_dx_factors_health_status_count
+- prev_dx_genitourinary_count
+- prev_dx_infectious_parasitic_count
+- prev_dx_injury_poisoning_count
+- prev_dx_mental_disorders_count
+- prev_dx_musculoskeletal_connective_count
+- prev_dx_neoplasms_count
+- prev_dx_nervous_sensory_count
+- prev_dx_other_icd10_count
+- prev_dx_perinatal_conditions_count
+- prev_dx_pregnancy_childbirth_count
+- prev_dx_respiratory_count
+- prev_dx_skin_subcutaneous_count
+- prev_dx_symptoms_signs_illdefined_count
+- prev_dx_unknown_count
+- resp_rate_max
+- resp_rate_measured
+- resp_rate_min
 - sbp_measured
+- sodium_delta
 - sodium_max
+- sodium_mean
 - sodium_measured
+- spo2_max
 - spo2_measured
-- subject_id_x
-- subject_id_y
-- temp_max
-- temp_min
+- temp_measured
+- wbc_delta
 - wbc_log
 - wbc_max
 - wbc_measured

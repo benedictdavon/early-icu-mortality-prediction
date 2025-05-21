@@ -1,7 +1,11 @@
 import pandas as pd
 import numpy as np
 import os
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import seaborn as sns
+# Rest of your imports
 import seaborn as sns
 from scipy import stats
 from sklearn.preprocessing import StandardScaler, RobustScaler
@@ -280,6 +284,67 @@ def create_clinical_derived_features(df):
     
     processed_df = df.copy()
     
+    # Add BMI calculation code here
+    # Check if height and weight columns exist to calculate BMI
+    weight_cols = [col for col in processed_df.columns if 'weight' in col.lower()]
+    height_cols = [col for col in processed_df.columns if 'height' in col.lower()]
+    
+    # Calculate BMI if height and weight are available
+    if weight_cols and height_cols:
+        print("  - Found height and weight columns, calculating BMI")
+        
+        # Use the first available weight and height columns
+        weight_col = weight_cols[0]
+        height_col = height_cols[0]
+        
+        # Handle unit conversions if needed (assuming weight in kg and height in cm)
+        # Convert height from cm to meters if needed
+        height_values = processed_df[height_col].copy()
+        if height_values.median() > 3:  # Height likely in cm if median > 3
+            height_values = height_values / 100.0  # Convert to meters
+            
+        # Calculate BMI: weight(kg) / height(m)²
+        processed_df['bmi'] = processed_df[weight_col] / (height_values ** 2)
+        
+        # Apply clinical bounds to BMI (10-100 is a very wide but safe range)
+        processed_df['bmi'] = processed_df['bmi'].clip(10, 100)
+        print(f"  - Calculated BMI from {weight_col} and {height_col}")
+    else:
+        print("  - Height or weight columns not found, estimating BMI")
+        
+        # BMI estimate based on demographics
+        if 'age' in processed_df.columns and 'gender' in processed_df.columns:
+            # Create estimated BMI based on age and gender
+            # These are approximate average values by age group and gender
+            def estimate_bmi(row):
+                age = row['age']
+                gender = row['gender'] if 'gender' in row else 'M'
+                
+                if isinstance(gender, str):
+                    gender = gender.upper()[0]  # Get first letter (M or F)
+                elif pd.isna(gender) or gender is None:
+                    gender = 'M'  # Default to male if missing
+                
+                # Simplified BMI estimation by age and gender
+                if gender == 'M' or gender == 1:
+                    if age < 30: return 24.5
+                    elif age < 45: return 26.0
+                    elif age < 60: return 27.5
+                    else: return 26.8
+                else:  # Female
+                    if age < 30: return 23.8
+                    elif age < 45: return 25.5
+                    elif age < 60: return 26.8
+                    else: return 26.2
+            
+            processed_df['bmi'] = processed_df.apply(estimate_bmi, axis=1)
+            print("  - Estimated BMI based on age and gender")
+        else:
+            # Default fallback - assign median BMI for general population
+            processed_df['bmi'] = 26.0  # Average adult BMI
+            print("  - No demographic data for BMI estimation, using population average")
+
+    
     # 1. SIRS (Systemic Inflammatory Response Syndrome) Criteria
     # - Heart rate > 90 bpm
     # - Respiratory rate > 20 breaths/min
@@ -337,50 +402,202 @@ def create_clinical_derived_features(df):
     
     return processed_df
 
-def reduce_feature_redundancy(df, correlation_threshold=0.85):
-    """Reduce redundancy by removing highly correlated features"""
-    print("Reducing feature redundancy...")
+
+def reduce_feature_redundancy(df, correlation_threshold=0.85, keep_transformed=True, keep_clinical=True,
+                             clinical_threshold=0.95, verbose=True):
+    """
+    Advanced redundancy reduction optimized for Random Forest models
+    
+    Parameters:
+    -----------
+    df: DataFrame
+        Input features dataframe
+    correlation_threshold: float, default=0.85
+        Correlation threshold for general features
+    keep_transformed: bool, default=True
+        Whether to keep both original and transformed versions of important features
+    keep_clinical: bool, default=True
+        Whether to prioritize keeping clinical features
+    clinical_threshold: float, default=0.95
+        Higher correlation threshold for clinical features (only drop if extremely correlated)
+    verbose: bool, default=True
+        Whether to print detailed information
+    """
+    print("Reducing feature redundancy with RF-optimized approach...")
     
     processed_df = df.copy()
     
+    # Define clinical feature patterns - these are treated with higher importance
+    clinical_patterns = [
+        'heart_rate', 'resp_rate', 'sbp', 'dbp', 'map', 'spo2', 'temp',
+        'lactate', 'creatinine', 'bun', 'glucose', 'wbc', 'platelets',
+        'hemoglobin', 'sodium', 'potassium', 'age', 'shock_index', 'bmi',
+        'duration_hours', 'anion_gap'
+    ]
+    
+    # Define transform suffixes that indicate derived features
+    transform_patterns = ['_log', '_min', '_max', '_mean', '_delta']
+    
     # Get numeric features without missing indicators
     numeric_features = [col for col in processed_df.select_dtypes(include=[np.number]).columns
-                       if not col.endswith('_missing')]
+                      if not col.endswith('_missing') and not col.startswith('has_')]
     
-    # Calculate correlation matrix
+    # Categorize features
+    clinical_features = []
+    derived_features = []
+    other_features = []
+    
+    for col in numeric_features:
+        # Check if it's a clinical feature
+        if any(pattern in col for pattern in clinical_patterns):
+            clinical_features.append(col)
+        
+        # Check if it's a derived/transformed feature
+        elif any(pattern in col for pattern in transform_patterns):
+            derived_features.append(col)
+            
+        # Otherwise it's a general feature
+        else:
+            other_features.append(col)
+    
+    if verbose:
+        print(f"  - Found {len(clinical_features)} clinical features")
+        print(f"  - Found {len(derived_features)} derived features")
+        print(f"  - Found {len(other_features)} other numeric features")
+    
+    # Calculate full correlation matrix
     corr_matrix = processed_df[numeric_features].corr().abs()
     
-    # Find highly correlated features
-    upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-    to_drop = [column for column in upper_tri.columns if any(upper_tri[column] > correlation_threshold)]
+    # Create a mapping from feature to its base feature name
+    feature_groups = {}
     
+    # Group features that measure the same underlying quantity
+    for feature in numeric_features:
+        # Find base feature name by removing min/max/mean/etc.
+        base_name = feature
+        for suffix in ['_min', '_max', '_mean', '_log', '_delta']:
+            if feature.endswith(suffix):
+                base_name = feature.replace(suffix, '')
+                break
+                
+        if base_name not in feature_groups:
+            feature_groups[base_name] = []
+        feature_groups[base_name].append(feature)
+    
+    # Identify and handle highly correlated groups
+    to_drop = []
+    preserved = []
+    
+    # 1. First, filter for correlation matrix upper triangle
+    upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    
+    # 2. Find pairs of highly correlated features
+    high_corr_pairs = []
+    for col in upper_tri.columns:
+        for idx, value in upper_tri[col].items():
+            if pd.notnull(value) and value > correlation_threshold:
+                high_corr_pairs.append((idx, col, value))
+    
+    # Sort by correlation (highest first)
+    high_corr_pairs.sort(key=lambda x: x[2], reverse=True)
+    
+    if verbose and high_corr_pairs:
+        print(f"  - Found {len(high_corr_pairs)} highly correlated feature pairs")
+        for feat1, feat2, corr in high_corr_pairs[:5]:
+            print(f"    - {feat1} ↔ {feat2}: {corr:.4f}")
+        if len(high_corr_pairs) > 5:
+            print(f"    - ... and {len(high_corr_pairs) - 5} more pairs")
+    
+    # 3. Process correlation pairs and make decisions
+    for feat1, feat2, corr_val in high_corr_pairs:
+        # Skip if either feature is already marked for dropping
+        if feat1 in to_drop or feat2 in to_drop:
+            continue
+            
+        # Different handling based on feature types
+        is_clinical1 = any(pattern in feat1 for pattern in clinical_patterns)
+        is_clinical2 = any(pattern in feat2 for pattern in clinical_patterns)
+        
+        # Special case: if comparing original and transformed version of same clinical feature
+        if keep_transformed and is_clinical1 and is_clinical2:
+            same_base = False
+            for pattern in clinical_patterns:
+                if pattern in feat1 and pattern in feat2:
+                    same_base = True
+                    break
+                    
+            if same_base and any(feat1.endswith(suffix) for suffix in transform_patterns) != any(feat2.endswith(suffix) for suffix in transform_patterns):
+                # Keep both the original and transformed versions of important clinical features
+                preserved.append((feat1, feat2, f"kept both clinical variants"))
+                continue
+                
+        # Case: Two clinical features - use higher threshold
+        if keep_clinical and is_clinical1 and is_clinical2:
+            if corr_val <= clinical_threshold:
+                # Not high enough correlation to drop clinical features
+                continue
+                
+        # Decision logic for which feature to drop
+        feat_to_drop = None
+        
+        # Calculate feature scores based on variance and missingness
+        var1 = processed_df[feat1].var()
+        var2 = processed_df[feat2].var()
+        missing1 = processed_df[feat1].isnull().mean()
+        missing2 = processed_df[feat2].isnull().mean()
+        
+        # Higher score = better feature
+        score1 = var1 * (1 - missing1)
+        score2 = var2 * (1 - missing2)
+        
+        # Adjust scores based on feature type 
+        if keep_clinical:
+            if is_clinical1:
+                score1 *= 1.5  # Boost clinical features
+            if is_clinical2:
+                score2 *= 1.5
+                
+        # Prefer non-derived features for interpretability
+        has_suffix1 = any(feat1.endswith(suffix) for suffix in transform_patterns)
+        has_suffix2 = any(feat2.endswith(suffix) for suffix in transform_patterns)
+        
+        if has_suffix1 and not has_suffix2:
+            score1 *= 0.9  # Slightly penalize derived features
+        elif has_suffix2 and not has_suffix1:
+            score2 *= 0.9
+            
+        # Decide which feature to drop based on scores
+        reason = ""
+        if score1 < score2:
+            feat_to_drop = feat1
+            reason = f"lower score ({score1:.2f} vs {score2:.2f})"
+        else:
+            feat_to_drop = feat2
+            reason = f"lower score ({score2:.2f} vs {score1:.2f})"
+            
+        # Add to drop list with reason
+        if feat_to_drop not in to_drop:
+            to_drop.append(feat_to_drop)
+            if verbose:
+                preserved_feature = feat1 if feat_to_drop == feat2 else feat2
+                preserved.append((preserved_feature, feat_to_drop, reason))
+    
+    # Drop the features
     if to_drop:
-        print(f"  - Found {len(to_drop)} redundant features to drop")
-        print("  - Redundant features:", to_drop)
-        
-        # Check if any log-transformed features are in the drop list
-        log_features_to_drop = [f for f in to_drop if f.endswith('_log')]
-        if log_features_to_drop:
-            print("  - Among redundant features, preferring to drop log-transforms and keeping originals")
-            # If both original and log are in drop list, keep the one with less skew
-            for log_feat in log_features_to_drop:
-                orig_feat = log_feat.replace('_log', '')
-                if orig_feat in to_drop:
-                    # Keep the less skewed one
-                    if abs(processed_df[log_feat].skew()) < abs(processed_df[orig_feat].skew()):
-                        to_drop.remove(orig_feat)  # Keep log version
-                        print(f"    - Keeping {log_feat} instead of {orig_feat} due to lower skew")
-                    else:
-                        to_drop.remove(log_feat)  # Keep original version
-                        print(f"    - Keeping {orig_feat} instead of {log_feat} due to lower skew")
-        
-        # Remove redundant features
+        if verbose:
+            print(f"\n  - Dropping {len(to_drop)} redundant features:")
+            for i, (kept, dropped, reason) in enumerate(preserved[:10]):
+                print(f"    - Keeping {kept} over {dropped}: {reason}")
+            if len(preserved) > 10:
+                print(f"    - ... and {len(preserved) - 10} more decisions")
+                
         processed_df = processed_df.drop(columns=to_drop)
-        print(f"  - Dropped {len(to_drop)} redundant features")
+        print(f"  - Final feature count: {processed_df.shape[1]} (removed {len(to_drop)} redundant features)")
     else:
-        print("  - No highly correlated features found")
+        print("  - No redundant features to drop")
     
     return processed_df
+
 def restore_critical_features(processed_df, original_df):
     """Restore critical clinical features that may have been dropped"""
     print("Restoring critical clinical features...")
@@ -412,10 +629,16 @@ def restore_critical_features(processed_df, original_df):
     restored_count = 0
     for feature in all_critical_features:
         if feature not in processed_df.columns and feature in original_df.columns:
-            # Use sophisticated imputation for the most critical features
-            if feature == 'bmi':
+            # Check data type to decide imputation strategy
+            if feature == 'gender' or original_df[feature].dtype == 'object' or original_df[feature].dtype.name == 'category':
+                # For categorical features like gender, use mode (most frequent value)
+                mode_value = original_df[feature].mode().iloc[0] if not original_df[feature].empty else "Unknown"
+                processed_df[feature] = original_df[feature].fillna(mode_value)
+                print(f"  - Restored categorical feature {feature} using mode")
+                restored_count += 1
+            
+            elif feature == 'bmi':
                 # BMI can be estimated from age, gender and other vitals
-                # Create a simple model to predict BMI if we have enough data
                 if 'gender_numeric' in processed_df.columns:
                     median_by_gender = original_df.groupby('gender_numeric')[feature].median()
                     processed_df[feature] = processed_df['gender_numeric'].map(median_by_gender)
@@ -463,10 +686,17 @@ def restore_critical_features(processed_df, original_df):
                     print(f"  - Couldn't restore {feature} - too much missing data")
                     
             else:
-                # For other features, use simple imputation
-                processed_df[feature] = original_df[feature].fillna(original_df[feature].median())
-                print(f"  - Restored {feature}")
-                restored_count += 1
+                # For numeric features, use median imputation
+                try:
+                    processed_df[feature] = original_df[feature].fillna(original_df[feature].median())
+                    print(f"  - Restored numeric feature {feature}")
+                    restored_count += 1
+                except (TypeError, ValueError) as e:
+                    # If median fails, try mode instead
+                    mode_value = original_df[feature].mode().iloc[0] if not original_df[feature].empty else None
+                    processed_df[feature] = original_df[feature].fillna(mode_value)
+                    print(f"  - Restored {feature} using mode (median failed)")
+                    restored_count += 1
     
     if restored_count == 0:
         print("  - No critical features needed restoration")
@@ -475,6 +705,28 @@ def restore_critical_features(processed_df, original_df):
         
     return processed_df
 
+def remove_redundant_features(df):
+    """Remove specific redundant features that dilute feature importance"""
+    print("Removing specific redundant features...")
+    
+    redundant_pairs = {
+        'age': 'anchor_age',  # Keep age, remove anchor_age
+        'duration_hours': 'duration_hours_log'  # Keep duration_hours, remove log version
+    }
+    
+    features_to_remove = []
+    for keep_feature, remove_feature in redundant_pairs.items():
+        if keep_feature in df.columns and remove_feature in df.columns:
+            features_to_remove.append(remove_feature)
+            print(f"  - Keeping '{keep_feature}' and removing redundant '{remove_feature}'")
+    
+    if features_to_remove:
+        df = df.drop(columns=features_to_remove)
+        print(f"  - Removed {len(features_to_remove)} redundant features")
+    else:
+        print("  - No redundant features to remove")
+    
+    return df
 
 def select_features(df, target_col=None, n_components=None, method='variance', keep_clinical=True):
     """Select most informative features using various methods"""
@@ -579,6 +831,7 @@ def select_features(df, target_col=None, n_components=None, method='variance', k
         # Use feature importance from Random Forest
         from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
         from sklearn.feature_selection import SelectFromModel
+        from sklearn.preprocessing import LabelEncoder
         
         if target_col is None or target_col not in df.columns:
             print("  - Target column is required for importance-based feature selection")
@@ -587,33 +840,59 @@ def select_features(df, target_col=None, n_components=None, method='variance', k
         X = df.drop(columns=[target_col])
         y = df[target_col]
         
+        # Handle categorical variables - we need to encode them
+        categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        if categorical_cols:
+            print(f"  - Found {len(categorical_cols)} categorical columns to encode")
+            X_processed = X.copy()
+            
+            # Apply label encoding to categorical columns
+            label_encoders = {}
+            for col in categorical_cols:
+                le = LabelEncoder()
+                X_processed[col] = le.fit_transform(X[col].astype(str))
+                label_encoders[col] = le
+                print(f"    - Encoded '{col}' with values: {list(le.classes_)}")
+        else:
+            X_processed = X
+            
         # Choose classifier or regressor based on the target type
         if len(np.unique(y)) < 10:  # Classification task
+            print("  - Using RandomForestClassifier for feature selection")
             model = RandomForestClassifier(n_estimators=100, random_state=42)
         else:  # Regression task
+            print("  - Using RandomForestRegressor for feature selection")
             model = RandomForestRegressor(n_estimators=100, random_state=42)
         
         # Fit model
-        model.fit(X, y)
+        model.fit(X_processed, y)
         
         # Select features above mean importance
         selector = SelectFromModel(model, threshold='mean')
-        X_selected = selector.fit_transform(X, y)
+        X_selected = selector.fit_transform(X_processed, y)
         
         # Get selected feature names
-        selected_features = X.columns[selector.get_support()]
+        selected_features = X_processed.columns[selector.get_support()].tolist()
         
-        print(f"  - Selected {len(selected_features)} out of {X.shape[1]} features based on importance")
+        print(f"  - Selected {len(selected_features)} out of {X_processed.shape[1]} features based on importance")
+        
+        # Make sure to keep clinical features if specified
+        if keep_clinical:
+            for feat in clinical_features:
+                if feat in X.columns and feat not in selected_features:
+                    selected_features.append(feat)
+                    print(f"  - Added clinical feature '{feat}' back to selection")
         
         # Get the top 10 most important features
-        importances = pd.Series(model.feature_importances_, index=X.columns).sort_values(ascending=False)
+        importances = pd.Series(model.feature_importances_, index=X_processed.columns).sort_values(ascending=False)
         print("  - Top 10 most important features:")
         for i, (feat, imp) in enumerate(importances.head(10).items()):
             print(f"    {i+1}. {feat}: {imp:.4f}")
         
         # Return dataframe with selected features and target
-        return pd.DataFrame(X_selected, columns=selected_features, index=X.index).join(pd.Series(y, name=target_col))
-    
+        # Note: we use X not X_processed to keep original categorical values
+        selected_df = pd.concat([X[selected_features], pd.Series(y, name=target_col)], axis=1)
+        return selected_df
     elif method == 'correlation':
         # Remove highly correlated features
         print("  - Finding and removing highly correlated features...")
@@ -774,6 +1053,101 @@ def handle_class_imbalance(df, target_col, method='smote', sampling_strategy='au
     
     return balanced_df
 
+def add_temporal_trends(df):
+    """Add temporal trends by comparing first vs last measurements when available"""
+    print("Adding temporal trends...")
+    
+    # Column groups where temporal trends might exist
+    temporal_groups = {
+        'lactate': ['lactate_min', 'lactate_max'],
+        'heart_rate': ['heart_rate_min', 'heart_rate_max'],
+        'sbp': ['sbp_min', 'sbp_max'],
+        'dbp': ['dbp_min', 'dbp_max'],
+        'resp_rate': ['resp_rate_min', 'resp_rate_max'],
+        'temp': ['temp_min', 'temp_max'],
+        'spo2': ['spo2_min', 'spo2_max']
+    }
+    
+    trends_created = 0
+    
+    # For each group, create delta and trending features
+    for feature_group, columns in temporal_groups.items():
+        if len(columns) >= 2 and all(col in df.columns for col in columns):
+            min_col = columns[0]
+            max_col = columns[1]
+            
+            # Create delta (absolute change)
+            delta_name = f"{feature_group}_delta"
+            df[delta_name] = df[max_col] - df[min_col]
+            
+            # Create relative percent change
+            pct_change_name = f"{feature_group}_pct_change"
+            # Avoid division by zero
+            df[pct_change_name] = ((df[max_col] - df[min_col]) / 
+                                   df[min_col].replace(0, np.nan)) * 100
+            df[pct_change_name] = df[pct_change_name].fillna(0)
+            
+            # Create trend direction (-1 decreasing, 0 stable, 1 increasing)
+            # Using a threshold of 5% change to indicate meaningful trend
+            trend_name = f"{feature_group}_trend"
+            df[trend_name] = np.sign(df[pct_change_name])
+            df.loc[abs(df[pct_change_name]) < 5, trend_name] = 0
+            
+            trends_created += 3
+            print(f"  - Created temporal features for {feature_group}")
+    
+    if trends_created == 0:
+        print("  - No temporal features created (min/max pairs not available)")
+    else:
+        print(f"  - Added {trends_created} temporal trend features")
+    
+    return df
+
+
+def add_polynomial_features(df):
+    """Add polynomial features for key vital signs to capture non-linear relationships"""
+    print("Adding polynomial features for key vitals...")
+    
+    # Key clinical features that may have non-linear relationships with mortality
+    key_vitals = [
+        'temp_mean', 'heart_rate_mean', 'resp_rate_mean', 
+        'lactate_mean', 'sbp_mean', 'spo2_mean'
+    ]
+    
+    # Filter to only include available columns
+    available_vitals = [col for col in key_vitals if col in df.columns]
+    
+    if not available_vitals:
+        print("  - No key vitals available for polynomial features")
+        return df
+        
+    features_created = 0
+    
+    # For each vital, create quadratic term
+    for vital in available_vitals:
+        # Create squared term to capture U-shaped or inverted-U relationships
+        poly_name = f"{vital}_squared"
+        df[poly_name] = df[vital] ** 2
+        features_created += 1
+        
+        # Create normalized distance from clinical normal
+        # Define normal ranges for key vitals
+        normal_ranges = {
+            'temp_mean': 36.5,      # Normal body temperature in Celsius
+            'heart_rate_mean': 75,  # Normal resting heart rate
+            'resp_rate_mean': 15,   # Normal respiratory rate
+            'lactate_mean': 1.0,    # Normal lactate level
+            'sbp_mean': 120,        # Normal systolic BP
+            'spo2_mean': 97         # Normal oxygen saturation
+        }
+        
+        if vital in normal_ranges:
+            dist_name = f"{vital}_dist_from_normal"
+            df[dist_name] = (df[vital] - normal_ranges[vital]) ** 2
+            features_created += 1
+    
+    print(f"  - Created {features_created} polynomial features for key vitals")
+    return df
 
 def verify_feature_scaling(df, excluded_cols=None):
     """Verify and fix feature scaling issues"""
@@ -847,13 +1221,22 @@ def enhanced_preprocess_pipeline(input_path, output_path, report_dir='./figures'
     
     # Create derived clinical features
     df = create_clinical_derived_features(df)
+
+    # Add temporal trends
+    df = add_temporal_trends(df)
+
+    # Add polynomial features for key vitals
+    df = add_polynomial_features(df)
     
     # Verify feature scaling
     df = verify_feature_scaling(df)
     
+    # After verify_feature_scaling(df)
+    df = remove_redundant_features(df)
+
     # Reduce redundancy using correlation method, but preserve clinical features
-    df = select_features(df, target_col=target_col, method='correlation', keep_clinical=keep_clinical)
-    
+    df = select_features(df, target_col=target_col, method='importance', keep_clinical=keep_clinical)
+
     # Final check for critical features
     df = restore_critical_features(df, original_df)
     
@@ -862,12 +1245,14 @@ def enhanced_preprocess_pipeline(input_path, output_path, report_dir='./figures'
         print("\nPerforming feature selection with target variable...")
         df = select_features(df, target_col=target_col, method='importance', keep_clinical=keep_clinical)
         
-        # Handle class imbalance for classification problems
-        n_classes = len(df[target_col].unique())
-        if n_classes <= 10:  # Classification task
-            df = handle_class_imbalance(df, target_col, method='smote')
+        # # Handle class imbalance for classification problems
+        # n_classes = len(df[target_col].unique())
+        # if n_classes <= 10:  # Classification task
+        #     df = handle_class_imbalance(df, target_col, method='smote')
     else:
         print("\nNo target variable provided, skipping importance-based feature selection")
+    
+    df = handle_date_columns(df)
     
     # Save the processed data
     save_processed_data(df, output_path)
@@ -876,6 +1261,45 @@ def enhanced_preprocess_pipeline(input_path, output_path, report_dir='./figures'
     generate_preprocessing_report(original_df, df, report_dir)
     
     print("Enhanced data preprocessing pipeline complete!")
+    return df
+
+def handle_date_columns(df):
+    """Detect and handle date/time columns that can cause model errors"""
+    print("Handling date/time columns...")
+    
+    date_columns = []
+    
+    # 1. Detect by column name patterns
+    for col in df.columns:
+        if any(pattern in col.lower() for pattern in ['time', 'date', 'dt_', '_dt', 'dob']):
+            date_columns.append(col)
+    
+    # 2. Detect string columns with date patterns
+    for col in df.select_dtypes(include=['object']).columns:
+        # If column isn't already identified as a date column
+        if col not in date_columns:
+            # Check if it looks like a datetime (contains both - and :)
+            sample_values = df[col].dropna().astype(str).iloc[:5].tolist()
+            for val in sample_values:
+                if '-' in val and ':' in val:
+                    date_columns.append(col)
+                    break
+    
+    # Remove duplicates and actually drop the columns
+    date_columns = list(set(date_columns))
+    
+    if date_columns:
+        print(f"  - Found {len(date_columns)} date/time columns:")
+        for col in date_columns[:10]:
+            print(f"    - {col}")
+        if len(date_columns) > 10:
+            print(f"    - ... and {len(date_columns)-10} more")
+            
+        df.drop(columns=date_columns, inplace=True, errors='ignore')
+        print(f"  - Dropped {len(date_columns)} date/time columns")
+    else:
+        print("  - No date/time columns found")
+        
     return df
 
 def standardize_features(df):
@@ -1011,7 +1435,7 @@ def preprocess_pipeline(input_path, output_path, report_dir='./figures'):
     
     # Handle missing data
     df = handle_missing_data(df, missingness_data)
-    
+
     # Handle outliers
     df = identify_and_handle_outliers(df)
     
@@ -1024,6 +1448,9 @@ def preprocess_pipeline(input_path, output_path, report_dir='./figures'):
     # Reduce redundancy
     df = reduce_feature_redundancy(df)
     
+    # Handle date columns
+    df = handle_date_columns(df)
+
     # Standardize features
     df = standardize_features(df)
     

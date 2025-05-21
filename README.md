@@ -75,18 +75,29 @@ Early prediction can help inform clinical decisions and potentially save lives.
      - Used Winsorizing (1%-99% percentile capping) for skewed variables
    - Feature transformations:
      - Log transformation for highly skewed features (skew > 2)
+     - Polynomial features (squared) for key vital signs
      - Standardization using RobustScaler (resistant to outliers)
    - Feature engineering:
      - Created SIRS criteria count for sepsis risk
      - Added shock index (HR/SBP) for hemodynamic status
-     - Added BUN:creatinine ratio for kidney function
+     - Added distance-from-normal metrics for vital signs:
+       - Temperature deviation from 36.5°C
+       - Heart rate deviation from 75 bpm
+       - Respiratory rate deviation from 15 breaths/min
+       - SBP deviation from 120 mmHg
+     - Added temporal trends (delta, percent change)
      - Calculated hypoxemia flag (SpO2 < 92%)
    - Feature selection:
-     - Removed highly correlated features (r > 0.85)
+     - Removed redundant features (age vs. anchor_age)
+     - Removed log-transformed values when raw features suffice
      - Preserved key clinical variables (vitals, labs, demographics)
-     - Applied variance-based filtering for low-information features
+     - Applied importance-based feature selection
+     - Retained 57 features from original 144 columns
 
 4. **Model Development** 📝
+   - Random Forest with cost-sensitive learning
+     - Optimized hyperparameters: max_depth=15, min_samples_leaf=4
+     - SMOTE for class imbalance
    - Classical models (Logistic Regression, XGBoost)
    - Deep learning (optional)
 
@@ -100,11 +111,32 @@ Early prediction can help inform clinical decisions and potentially save lives.
 
 ## 📈 Results
 
-| Model               | AUC   | Accuracy | F1-Score |
-|--------------------|-------|----------|----------|
-| Logistic Regression| 0.xxx | 0.xxx    | 0.xxx    |
-| XGBoost            | 0.xxx | 0.xxx    | 0.xxx    |
+| Model               | AUC    | Accuracy | Precision | Recall | F1-Score |
+|--------------------|--------|----------|-----------|--------|----------|
+| Random Forest      | 0.8145 | 0.7900   | 0.4971    | 0.6091 | 0.5474   |
+| Logistic Regression| -      | -        | -         | -      | -        |
+| XGBoost            | -      | -        | -         | -      | -        |
 
+### Top 10 Important Features from Random Forest:
+1. Age (0.0527)
+2. Anchor age (0.0506)
+3. Previous diagnosis count (0.0444)
+4. Respiratory rate (mean) (0.0363)
+5. ICU duration hours (0.0354)
+6. ICU duration hours (log) (0.0341)
+7. Shock index (0.0333)
+8. Systolic blood pressure (min) (0.0310)
+9. SpO2 (mean) (0.0265)
+10. Temperature (mean) (0.0262)
+
+### Key Findings:
+- Demographic factors (age) are strongly predictive of mortality
+- Respiratory parameters emerge as critical predictors
+- The derived feature "shock index" demonstrates significant predictive value
+- Feature engineering (log transformations, clinical indicators) improved model performance
+- Model achieves good discrimination with AUC of 0.8145
+
+_Model evaluation based on 5-fold cross-validation and testing on 20% held-out data._
 _Results are preliminary and subject to tuning._
 
 ---
