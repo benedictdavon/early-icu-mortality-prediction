@@ -24,9 +24,10 @@ def load_patients(hosp_path):
 
 def load_icustays(icu_path):
     """Load and preprocess ICU stays data."""
-    # Load only the columns we need (optimization 1)
+    # Load only the columns we need
     icustays = pd.read_csv(os.path.join(icu_path, '_icustays.csv'), 
-                           usecols=['stay_id', 'subject_id', 'intime', 'outtime'])
+                        usecols=['stay_id', 'subject_id', 'hadm_id', 'intime', 'outtime'])
+
     print(f"Loaded {len(icustays)} ICU stays")
     
     # Count unique ICU patients
