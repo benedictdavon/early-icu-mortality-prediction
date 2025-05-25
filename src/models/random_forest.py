@@ -106,10 +106,22 @@ class ICUMortalityRandomForest(ICUMortalityBaseModel):
         self.train_time = end_time - start_time
         print(f"Model trained in {self.train_time:.2f} seconds")
 
-        # Calculate feature importance
+        # DEBUG: Check array lengths before creating DataFrame
+        print(f"Number of features: {len(self.feature_names)}")
+        print(f"Number of feature importances: {len(self.model.feature_importances_)}")
+        
+        # Make sure feature names match the actual features used by the model
+        if len(self.feature_names) != len(self.model.feature_importances_):
+            print("WARNING: Feature names length doesn't match feature importances length")
+            print("Using generic feature names...")
+            feature_names_to_use = [f"feature_{i}" for i in range(len(self.model.feature_importances_))]
+        else:
+            feature_names_to_use = self.feature_names
+
+        # Calculate feature importance with proper length checking
         self.feature_importance = pd.DataFrame(
             {
-                "feature": self.feature_names,
+                "feature": feature_names_to_use,
                 "importance": self.model.feature_importances_,
             }
         ).sort_values("importance", ascending=False)
@@ -134,91 +146,129 @@ class ICUMortalityRandomForest(ICUMortalityBaseModel):
                 "max_features": "sqrt",
                 "bootstrap": True,
                 "class_weight": "balanced",
-                "warm_start": True,  # Enable warm start for iterative training
             }
 
-        # Initialize model
-        self.model = RandomForestClassifier(
-            n_estimators=0, random_state=42, n_jobs=-1, **params
-        )
-
-        # Resample training data
+        # Resample training data once
         X_resampled, y_resampled = self.handle_class_imbalance(sampling_strategy="auto")
 
         # Initial estimators batch size
         n_est_batch = eval_every
 
-        # Track scores
+        # Track scores and models
         best_score = 0
         best_n_est = 0
+        best_model = None
         no_improve_count = 0
         scores = []
 
-        # Training loop
+        # Training loop - train separate models instead of using warm_start
         for i in range(0, max_iters, n_est_batch):
-            # Increase number of trees
-            self.model.n_estimators += n_est_batch
-
-            # Fit model (will only fit n_est_batch new trees due to warm_start)
-            self.model.fit(X_resampled, y_resampled)
+            current_n_est = i + n_est_batch
+            
+            print(f"Training model with {current_n_est} estimators...")
+            
+            # Create new model with current number of estimators
+            current_model = RandomForestClassifier(
+                n_estimators=current_n_est,
+                random_state=42,
+                n_jobs=-1,
+                **params
+            )
+            
+            # Fit model
+            current_model.fit(X_resampled, y_resampled)
 
             # Evaluate on validation set
-            y_pred_proba = self.model.predict_proba(self.X_val)[:, 1]
+            y_pred_proba = current_model.predict_proba(self.X_val)[:, 1]
             score = roc_auc_score(self.y_val, y_pred_proba)
             scores.append(score)
 
-            print(f"Iteration {i+n_est_batch}: AUC = {score:.4f}")
+            print(f"Iteration {current_n_est}: AUC = {score:.4f}")
 
             # Check for improvement
             if score > best_score:
                 best_score = score
-                best_n_est = self.model.n_estimators
+                best_n_est = current_n_est
+                best_model = current_model
                 no_improve_count = 0
+                print(f"New best score: {best_score:.4f} at {best_n_est} trees")
             else:
                 no_improve_count += 1
 
             # Early stop if no improvement for 'patience' iterations
             if no_improve_count >= patience:
                 print(
-                    f"Early stopping at {self.model.n_estimators} trees: "
+                    f"Early stopping at {current_n_est} trees: "
                     f"No improvement for {patience} iterations"
                 )
                 break
 
-        # Reset to best number of estimators
-        if best_n_est < self.model.n_estimators:
-            print(f"Rolling back to best model with {best_n_est} trees")
-            self.model.n_estimators = best_n_est
+        # Use the best model
+        if best_model is not None:
+            self.model = best_model
+            print(f"Using best model with {best_n_est} trees (AUC: {best_score:.4f})")
+        else:
+            # Fallback - shouldn't happen
+            print("No valid model found, training final model with default parameters")
+            self.model = RandomForestClassifier(
+                n_estimators=300,
+                random_state=42,
+                n_jobs=-1,
+                **params
+            )
             self.model.fit(X_resampled, y_resampled)
 
-        # Calculate feature importance
+        # DEBUG: Check array lengths before creating DataFrame
+        print(f"Number of features: {len(self.feature_names)}")
+        print(f"Number of feature importances: {len(self.model.feature_importances_)}")
+        print(f"X_train shape: {self.X_train.shape}")
+        print(f"X_resampled shape: {X_resampled.shape}")
+        
+        # Make sure feature names match the actual features used by the model
+        if len(self.feature_names) != len(self.model.feature_importances_):
+            print("WARNING: Feature names length doesn't match feature importances length")
+            print("Using generic feature names...")
+            feature_names_to_use = [f"feature_{i}" for i in range(len(self.model.feature_importances_))]
+        else:
+            feature_names_to_use = self.feature_names
+
+        # Calculate feature importance with proper length checking
         self.feature_importance = pd.DataFrame(
             {
-                "feature": self.feature_names,
+                "feature": feature_names_to_use,
                 "importance": self.model.feature_importances_,
             }
         ).sort_values("importance", ascending=False)
 
         # Plot training curve
         plt.figure(figsize=(10, 6))
-        plt.plot(range(n_est_batch, len(scores) * n_est_batch + 1, n_est_batch), scores)
+        n_estimators_list = list(range(n_est_batch, len(scores) * n_est_batch + 1, n_est_batch))
+        plt.plot(n_estimators_list, scores, 'b-', linewidth=2)
         plt.axvline(
             x=best_n_est,
             color="r",
             linestyle="--",
-            label=f"Best estimators: {best_n_est}",
+            linewidth=2,
+            label=f"Best: {best_n_est} trees (AUC={best_score:.4f})",
+        )
+        plt.axhline(
+            y=best_score,
+            color="r",
+            linestyle=":",
+            alpha=0.7,
+            label=f"Best AUC: {best_score:.4f}",
         )
         plt.xlabel("Number of Trees")
         plt.ylabel("Validation AUC")
-        plt.title("Random Forest Training Curve")
+        plt.title("Random Forest Training Curve with Early Stopping")
         plt.legend()
-        plt.grid()
-        plt.savefig(os.path.join(self.output_dir, "rf_training_curve.png"), dpi=300)
+        plt.grid(True, alpha=0.3)
+        plt.savefig(os.path.join(self.output_dir, "rf_training_curve.png"), dpi=300, bbox_inches='tight')
         plt.close()
 
-        print(
-            f"Final model has {best_n_est} trees with validation AUC: {best_score:.4f}"
-        )
+        print(f"Training curve saved to: {os.path.join(self.output_dir, 'rf_training_curve.png')}")
+        print(f"Final model has {best_n_est} trees with validation AUC: {best_score:.4f}")
+        
         return self.model
 
     def analyze_shap_values(self, max_display=20, n_samples=200):
@@ -226,8 +276,6 @@ class ICUMortalityRandomForest(ICUMortalityBaseModel):
         print("Analyzing SHAP values for feature interpretation...")
 
         try:
-            import shap
-
             # Sample data to make SHAP analysis faster
             if self.X_test.shape[0] > n_samples:
                 # Get a random sample from test data

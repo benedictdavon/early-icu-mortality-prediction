@@ -1,4 +1,4 @@
-# .gitignore
+.gitignore
 __MACOSX/
 *.ipynb_checkpoints
 *.pyc
@@ -8,3 +8,4 @@ __MACOSX/
 *.mat
 data/
 results/
+figures/

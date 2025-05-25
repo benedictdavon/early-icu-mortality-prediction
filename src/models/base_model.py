@@ -60,9 +60,45 @@ class ICUMortalityBaseModel:
         print("Columns before dropping:", data.columns.tolist())
         
         y = data['mortality']
+        # First remove any ID columns or timestamp columns that shouldn't be features
         X = data.drop(columns=['mortality', 'subject_id', 'hadm_id', 'stay_id'], errors='ignore')
         
-        print("\nColumns after dropping:", X.columns.tolist())
+        # Detect and handle datetime columns
+        datetime_pattern = r'\d{4}-\d{2}-\d{2}.*|.*\d{2}:\d{2}:\d{2}'
+        potential_datetime_cols = []
+        
+        for col in X.columns:
+            # Check a sample of non-null values to see if they look like dates
+            sample = X[col].dropna().astype(str).sample(min(5, len(X[col].dropna())))
+            if any(sample.str.match(datetime_pattern)):
+                potential_datetime_cols.append(col)
+        
+        if potential_datetime_cols:
+            print(f"Detected potential datetime columns: {potential_datetime_cols}")
+            print("These columns will be dropped to avoid imputation issues")
+            X = X.drop(columns=potential_datetime_cols)
+        
+        # NEW: Identify and handle categorical columns
+        categorical_cols = []
+        for col in X.columns:
+            # Check if column has string values that aren't numbers
+            if X[col].dtype == 'object':
+                sample = X[col].dropna().astype(str).sample(min(5, len(X[col].dropna())))
+                if any(not val.replace('.', '', 1).isdigit() for val in sample if val):
+                    categorical_cols.append(col)
+        
+        if categorical_cols:
+            print(f"Detected categorical columns: {categorical_cols}")
+            print("Converting categorical columns to numeric using one-hot encoding")
+            
+            # Option 1: One-hot encode categorical columns
+            X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+            
+            # Option 2: Or drop them if you prefer not to expand dimensions
+            # print("These columns will be dropped to avoid imputation issues")
+            # X = X.drop(columns=categorical_cols)
+    
+        print("\nColumns after preprocessing:", X.columns.tolist())
         
         # Report class distribution
         class_counts = y.value_counts()
@@ -93,11 +129,15 @@ class ICUMortalityBaseModel:
         self.y_test = y_test
         self.feature_names = X.columns.tolist()
         
-        print(f"Training set: {X_train.shape[0]} samples, {X_train.shape[1]} features")
-        print(f"Validation set: {X_val.shape[0]} samples")
-        print(f"Testing set: {X_test.shape[0]} samples")
+        print(f"Data loaded successfully with shapes:")
+        print(f"  X_train: {self.X_train.shape}")
+        print(f"  X_val: {self.X_val.shape}")
+        print(f"  X_test: {self.X_test.shape}")
+        print(f"  y_train: {self.y_train.shape}")
+        print(f"  y_val: {self.y_val.shape}")
+        print(f"  y_test: {self.y_test.shape}")
         
-        return X_train, X_val, X_test, y_train, y_val, y_test
+        return self.X_train, self.y_train
     
     def handle_class_imbalance(self, sampling_strategy='auto'):
         """Apply SMOTE to handle class imbalance"""
@@ -297,37 +337,66 @@ class ICUMortalityBaseModel:
         
         return results_dict
     
-    def calculate_permutation_importance(self, n_repeats=10):
-        """Calculate permutation feature importance"""
+    def calculate_permutation_importance(self, n_repeats=10, random_state=42):
+        """Calculate permutation importance for features"""
         print("Calculating permutation feature importance...")
         
-        if self.model is None:
-            raise ValueError("Model must be trained first using train()")
-            
+        if self.model is None or self.X_test is None:
+            raise ValueError("Model must be trained and test data must be available")
+        
+        from sklearn.inspection import permutation_importance
+        
         # Calculate permutation importance
-        result = permutation_importance(
-            self.model, self.X_test, self.y_test, 
-            n_repeats=n_repeats, random_state=42, n_jobs=-1
+        perm_result = permutation_importance(
+            self.model, self.X_test, self.y_test,
+            n_repeats=n_repeats, random_state=random_state, n_jobs=-1
         )
         
-        # Create DataFrame with results
+        # DEBUG: Check array lengths before creating DataFrame
+        print(f"Number of features: {len(self.feature_names)}")
+        print(f"Number of permutation importances: {len(perm_result.importances_mean)}")
+        print(f"X_test shape: {self.X_test.shape}")
+        
+        # Make sure feature names match the actual features used by the model
+        if len(self.feature_names) != len(perm_result.importances_mean):
+            print("WARNING: Feature names length doesn't match permutation importance length")
+            print("Using generic feature names...")
+            feature_names_to_use = [f"feature_{i}" for i in range(len(perm_result.importances_mean))]
+        else:
+            feature_names_to_use = self.feature_names
+    
+        # Create DataFrame with proper length checking
         perm_importance = pd.DataFrame({
-            'feature': self.feature_names,
-            'importance_mean': result.importances_mean,
-            'importance_std': result.importances_std
+            'feature': feature_names_to_use,
+            'importance_mean': perm_result.importances_mean,
+            'importance_std': perm_result.importances_std
         }).sort_values('importance_mean', ascending=False)
-        
-        # Plot top 20 features
-        plt.figure(figsize=(12, 10))
-        sns.barplot(x='importance_mean', y='feature', data=perm_importance.head(20))
-        plt.title(f'{self.model_name} Permutation Feature Importance')
+    
+        # Save permutation importance
+        perm_importance.to_csv(
+            os.path.join(self.output_dir, f"{self.model_name}_permutation_importance.csv"),
+            index=False
+        )
+    
+        # Plot permutation importance (top 20 features)
+        plt.figure(figsize=(10, 8))
+        top_features = perm_importance.head(20)
+    
+        plt.barh(range(len(top_features)), top_features['importance_mean'], 
+                 xerr=top_features['importance_std'])
+        plt.yticks(range(len(top_features)), top_features['feature'])
+        plt.xlabel('Permutation Importance')
+        plt.title(f'{self.model_name.replace("_", " ").title()} - Permutation Feature Importance')
+        plt.gca().invert_yaxis()
         plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, 'permutation_importance.png'), dpi=300)
+        plt.savefig(
+            os.path.join(self.output_dir, f"{self.model_name}_permutation_importance.png"),
+            dpi=300, bbox_inches='tight'
+        )
         plt.close()
-        
-        # Save importance values
-        perm_importance.to_csv(os.path.join(self.output_dir, 'permutation_importance.csv'), index=False)
-        
+    
+        print(f"Permutation importance saved to: {os.path.join(self.output_dir, f'{self.model_name}_permutation_importance.csv')}")
+    
         return perm_importance
     
     def find_optimal_threshold(self):
