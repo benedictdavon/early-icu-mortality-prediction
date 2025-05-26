@@ -309,6 +309,7 @@ Early prediction can help inform clinical decisions and potentially save lives.
 | Model                       | AUC    | Accuracy | Precision | Recall | F1-Score | Specificity |
 | --------------------------- | ------ | -------- | --------- | ------ | -------- | ----------- |
 | Random Forest               | 0.8145 | 0.7900   | 0.4971    | 0.6091 | 0.5474   | -           |
+| Bagging -Random Forest      | 0.8112 | 0.7501   | 0.4375    | 0.6941 | 0.5367   | -           |
 | Logistic Regression         | 0.7876 | 0.7439   | 0.4244    | 0.6402 | 0.5104   | -           |
 | XGBoost (threshold=0.50)    | 0.8426 | 0.8171   | 0.5641    | 0.5425 | 0.5531   | -           |
 | XGBoost (threshold=0.45)\*  | 0.8426 | 0.8095   | 0.5370    | 0.6275 | 0.5787   | 0.8574      |

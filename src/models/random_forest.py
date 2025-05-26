@@ -10,6 +10,7 @@ import time
 import sys
 from pathlib import Path
 from sklearn.metrics import roc_auc_score
+from sklearn.ensemble import BaggingClassifier
 
 # Add the parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))

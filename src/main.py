@@ -8,6 +8,7 @@ sys.path.append(str(Path(__file__).parent))
 from models.random_forest import ICUMortalityRandomForest
 from models.logistic_regression import ICUMortalityLogisticRegression
 from models.xgboost import ICUMortalityXGBoost
+from models.rf_bagging import ICUMortalityRandomForestBagging
 
 
 # Update the argument parser to include xgboost-ensemble
@@ -15,8 +16,9 @@ def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Train a model for ICU mortality prediction')
     parser.add_argument('--model', type=str, default='random_forest', 
-                        choices=['random_forest', 'logistic_regression', 'xgboost', 'xgboost_ensemble'],
-                        help='Model type to train (default: random_forest)')
+        choices=['random_forest', 'logistic_regression', 'xgboost', 'xgboost_ensemble', 'rf_bagging'],
+        help='Model type to train (default: random_forest)')
+
     parser.add_argument('--data-path', type=str, default=None,
                         help='Path to preprocessed data (default: data/processed/preprocessed_features.csv)')
     parser.add_argument('--output-dir', type=str, default=None,
@@ -40,6 +42,8 @@ def get_model_class(model_type):
         return ICUMortalityLogisticRegression
     elif model_type == 'xgboost' or model_type == 'xgboost-ensemble':
         return ICUMortalityXGBoost
+    elif model_type == 'rf_bagging':
+        return ICUMortalityRandomForestBagging
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -199,12 +203,19 @@ if __name__ == "__main__":
         'logistic_regression': 'LOGISTIC REGRESSION',
         'xgboost': 'XGBOOST',
         'xgboost_ensemble': 'XGBOOST ENSEMBLE',
+        'rf_bagging': 'RF + BAGGING',
     }
+
     model_display = model_display_names.get(args.model, args.model.upper())
     
     # Set up paths - for ensemble, use the xgboost data path
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_path_model = 'xgboost' if args.model == 'xgboost_ensemble' else args.model
+    if args.model == 'xgboost_ensemble':
+        data_path_model = 'xgboost'
+    elif args.model == 'rf_bagging':
+        data_path_model = 'rf_bagging'
+    else:
+        data_path_model = args.model
     
     # Default paths if not provided
     data_path = args.data_path or os.path.join(base_dir, 'data', 'processed', f'preprocessed_{data_path_model}_features.csv')
