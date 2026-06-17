@@ -2,10 +2,13 @@
 
 from evaluation.bootstrap import bootstrap_metric_ci
 from evaluation.calibration import (
+    IsotonicCalibrator,
     PlattScaler,
+    apply_isotonic_calibrator,
     apply_platt_scaler,
     calibration_summary,
     expected_calibration_error,
+    fit_isotonic_calibrator,
     fit_platt_scaler,
     logits_to_probabilities,
 )
@@ -23,8 +26,11 @@ __all__ = [
     "make_result_record",
     "calibration_summary",
     "expected_calibration_error",
+    "IsotonicCalibrator",
     "PlattScaler",
+    "fit_isotonic_calibrator",
     "fit_platt_scaler",
+    "apply_isotonic_calibrator",
     "apply_platt_scaler",
     "logits_to_probabilities",
     "bootstrap_metric_ci",

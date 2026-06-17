@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss
 
@@ -99,6 +100,60 @@ class PlattScaler:
         }
 
 
+@dataclass
+class IsotonicCalibrator:
+    """Validation-fitted isotonic calibration for model logits."""
+
+    fit_split: str = "validation"
+
+    def __post_init__(self) -> None:
+        self.model_: IsotonicRegression | None = None
+        self.fit_n_: int | None = None
+        self.fit_positive_rate_: float | None = None
+
+    def fit(self, validation_logits, validation_labels) -> "IsotonicCalibrator":
+        """Fit monotonic calibration on validation logits and labels only."""
+        logits = _as_1d_array(validation_logits, "validation_logits")
+        labels = np.asarray(validation_labels, dtype=int).reshape(-1)
+        if len(logits) != len(labels):
+            raise ValueError("validation_logits and validation_labels must have the same length")
+        if len(labels) == 0:
+            raise ValueError("Isotonic calibration requires at least one validation row")
+        if np.unique(labels).size < 2:
+            raise ValueError("Isotonic calibration requires both outcome classes in validation labels")
+
+        model = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
+        model.fit(logits, labels)
+        self.model_ = model
+        self.fit_n_ = int(len(labels))
+        self.fit_positive_rate_ = float(np.mean(labels))
+        return self
+
+    def predict_proba(self, logits) -> np.ndarray:
+        """Apply the fitted isotonic map to logits."""
+        if self.model_ is None:
+            raise ValueError("IsotonicCalibrator must be fit before predict_proba")
+        arr = _as_1d_array(logits, "logits")
+        return np.asarray(self.model_.predict(arr), dtype=float).reshape(-1)
+
+    def transform(self, logits) -> np.ndarray:
+        """Alias for predict_proba to mirror sklearn transformer naming."""
+        return self.predict_proba(logits)
+
+    def to_metadata(self) -> dict:
+        """Return aggregate calibration metadata without row-level predictions."""
+        if self.model_ is None:
+            raise ValueError("IsotonicCalibrator must be fit before metadata is available")
+        thresholds = getattr(self.model_, "X_thresholds_", [])
+        return {
+            "method": "isotonic",
+            "fit_split": self.fit_split,
+            "fit_n": int(self.fit_n_ or 0),
+            "fit_positive_rate": float(self.fit_positive_rate_ or 0.0),
+            "n_thresholds": int(len(thresholds)),
+        }
+
+
 def fit_platt_scaler(
     validation_logits,
     validation_labels,
@@ -112,6 +167,16 @@ def fit_platt_scaler(
 
 def apply_platt_scaler(calibrator: PlattScaler, logits) -> np.ndarray:
     """Apply a pre-fitted Platt scaler to another split's logits."""
+    return calibrator.predict_proba(logits)
+
+
+def fit_isotonic_calibrator(validation_logits, validation_labels) -> IsotonicCalibrator:
+    """Fit isotonic calibration from validation logits only."""
+    return IsotonicCalibrator().fit(validation_logits, validation_labels)
+
+
+def apply_isotonic_calibrator(calibrator: IsotonicCalibrator, logits) -> np.ndarray:
+    """Apply a pre-fitted isotonic calibrator to another split's logits."""
     return calibrator.predict_proba(logits)
 
 

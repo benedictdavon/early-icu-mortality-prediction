@@ -32,6 +32,7 @@ from features.temporal_tensor_builder import (
 )
 from evaluation.calibration import (
     calibration_summary,
+    fit_isotonic_calibrator,
     fit_platt_scaler,
     logits_to_probabilities,
 )
@@ -69,6 +70,8 @@ class MAFNetRunResult:
     pretrained_checkpoint_path: Path | None
     summary_path: Path
     platt_calibrator_path: Path | None
+    isotonic_calibrator_path: Path | None
+    calibration_model_path: Path | None
     validation_calibration_path: Path | None
     test_calibration_path: Path | None
 
@@ -513,6 +516,12 @@ def _probability_metrics_with_source(y_true, probabilities, source: str) -> dict
     return metrics
 
 
+def _calibrated_probability_source(method: str) -> str:
+    if method == "platt_scaling":
+        return "platt_calibrated"
+    return f"{method}_calibrated"
+
+
 def _calibration_report(
     y_true,
     raw_probabilities,
@@ -521,11 +530,13 @@ def _calibration_report(
     *,
     n_bins: int,
 ) -> dict:
+    method = calibrator.to_metadata()["method"]
+    probability_source = _calibrated_probability_source(method)
     return {
-        "probability_source": "platt_calibrated",
+        "probability_source": probability_source,
         "calibrator": calibrator.to_metadata(),
         "raw_sigmoid": calibration_summary(y_true, raw_probabilities, n_bins=n_bins),
-        "platt_calibrated": calibration_summary(
+        probability_source: calibration_summary(
             y_true,
             calibrated_probabilities,
             n_bins=n_bins,
@@ -847,31 +858,46 @@ def train_mafnet_from_bundle(
     _save_json(out / "validation_raw_metrics.json", validation_raw_metrics)
 
     platt_calibrator_path = None
+    isotonic_calibrator_path = None
+    calibration_model_path = None
     validation_calibration_path = None
     test_calibration_path = None
 
     if calibration_method in {"platt", "platt_scaling"}:
-        platt_calibrator = fit_platt_scaler(validation_logits, y_valid)
+        calibrator = fit_platt_scaler(validation_logits, y_valid)
         platt_calibrator_path = out / "platt_calibrator.joblib"
-        joblib.dump(platt_calibrator, platt_calibrator_path)
+        calibration_model_path = platt_calibrator_path
+    elif calibration_method == "isotonic":
+        calibrator = fit_isotonic_calibrator(validation_logits, y_valid)
+        isotonic_calibrator_path = out / "isotonic_calibrator.joblib"
+        calibration_model_path = isotonic_calibrator_path
+    elif calibration_method in {"none", "raw", "uncalibrated"}:
+        calibrator = None
+        validation_probabilities = validation_raw_probabilities
+        validation_metrics = validation_raw_metrics
+    else:
+        raise ValueError(f"Unsupported MAFNet calibration method: {calibration_method_raw}")
 
-        validation_probabilities = platt_calibrator.predict_proba(validation_logits)
+    if calibrator is not None:
+        joblib.dump(calibrator, calibration_model_path)
+        calibration_metadata = calibrator.to_metadata()
+        probability_source = _calibrated_probability_source(calibration_metadata["method"])
+        validation_probabilities = calibrator.predict_proba(validation_logits)
         validation_metrics = _probability_metrics_with_source(
             y_valid,
             validation_probabilities,
-            "platt_calibrated",
+            probability_source,
         )
-        validation_metrics["calibration_method"] = "platt_scaling"
-        validation_report = _calibration_report(
-            y_valid,
-            validation_raw_probabilities,
-            validation_probabilities,
-            platt_calibrator,
-            n_bins=calibration_bins,
-        )
+        validation_metrics["calibration_method"] = calibration_metadata["method"]
         validation_calibration_path = _save_json(
             out / "validation_calibration.json",
-            validation_report,
+            _calibration_report(
+                y_valid,
+                validation_raw_probabilities,
+                validation_probabilities,
+                calibrator,
+                n_bins=calibration_bins,
+            ),
         )
         save_calibration_curve(
             y_valid,
@@ -880,12 +906,6 @@ def train_mafnet_from_bundle(
             title="MAFNet Validation Calibration Curve",
             n_bins=calibration_bins,
         )
-    elif calibration_method in {"none", "raw", "uncalibrated"}:
-        platt_calibrator = None
-        validation_probabilities = validation_raw_probabilities
-        validation_metrics = validation_raw_metrics
-    else:
-        raise ValueError(f"Unsupported MAFNet calibration method: {calibration_method_raw}")
 
     test_metrics = None
     if test_loader is not None:
@@ -897,21 +917,23 @@ def train_mafnet_from_bundle(
             "raw_sigmoid",
         )
         _save_json(out / "test_raw_metrics.json", test_raw_metrics)
-        if platt_calibrator is not None:
-            test_probabilities = platt_calibrator.predict_proba(test_logits)
+        if calibrator is not None:
+            calibration_metadata = calibrator.to_metadata()
+            probability_source = _calibrated_probability_source(calibration_metadata["method"])
+            test_probabilities = calibrator.predict_proba(test_logits)
             test_metrics = _probability_metrics_with_source(
                 y_test,
                 test_probabilities,
-                "platt_calibrated",
+                probability_source,
             )
-            test_metrics["calibration_method"] = "platt_scaling"
+            test_metrics["calibration_method"] = calibration_metadata["method"]
             test_calibration_path = _save_json(
                 out / "test_calibration.json",
                 _calibration_report(
                     y_test,
                     test_raw_probabilities,
                     test_probabilities,
-                    platt_calibrator,
+                    calibrator,
                     n_bins=calibration_bins,
                 ),
             )
@@ -946,6 +968,10 @@ def train_mafnet_from_bundle(
         "test_raw_metrics_path": str(out / "test_raw_metrics.json") if test_metrics else None,
         "test_calibration_path": str(test_calibration_path) if test_calibration_path else None,
         "platt_calibrator_path": str(platt_calibrator_path) if platt_calibrator_path else None,
+        "isotonic_calibrator_path": str(isotonic_calibrator_path)
+        if isotonic_calibrator_path
+        else None,
+        "calibration_model_path": str(calibration_model_path) if calibration_model_path else None,
         "calibration_method": calibration_method,
         "n_train": int(len(data_bundle.datasets["train"])),
         "n_validation": int(len(data_bundle.datasets["validation"])),
@@ -964,6 +990,8 @@ def train_mafnet_from_bundle(
         pretrained_checkpoint_path=pretrain_checkpoint_path,
         summary_path=summary_path,
         platt_calibrator_path=platt_calibrator_path,
+        isotonic_calibrator_path=isotonic_calibrator_path,
+        calibration_model_path=calibration_model_path,
         validation_calibration_path=validation_calibration_path,
         test_calibration_path=test_calibration_path,
     )

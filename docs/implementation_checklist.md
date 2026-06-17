@@ -698,7 +698,7 @@ tests/test_calibration.py
 ## Implementation checklist
 
 - [x] Fit Platt scaling on validation logits only.
-- [ ] Optionally add isotonic calibration as ablation.
+- [x] Optionally add isotonic calibration as ablation.
 - [x] Apply calibration to validation and test probabilities.
 - [x] Select three thresholds using validation probabilities:
   - [x] screening

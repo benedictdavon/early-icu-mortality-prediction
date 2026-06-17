@@ -4,7 +4,9 @@ import numpy as np
 import pytest
 
 from evaluation.calibration import (
+    apply_isotonic_calibrator,
     apply_platt_scaler,
+    fit_isotonic_calibrator,
     fit_platt_scaler,
     logits_to_probabilities,
     platt_calibration_summary,
@@ -49,6 +51,35 @@ def test_platt_scaler_requires_two_validation_classes():
         fit_platt_scaler(
             validation_logits=[-2.0, -1.0, 0.5, 1.0],
             validation_labels=[0, 0, 0, 0],
+        )
+
+
+def test_isotonic_calibrator_fits_validation_logits_and_applies_to_test():
+    validation_logits = np.asarray([-3.0, -2.0, -1.0, 0.1, 1.0, 2.2, 3.0])
+    validation_labels = np.asarray([0, 0, 0, 1, 0, 1, 1])
+    calibrator = fit_isotonic_calibrator(validation_logits, validation_labels)
+    metadata_before = calibrator.to_metadata()
+
+    validation_probabilities = calibrator.predict_proba(validation_logits)
+    test_probabilities = apply_isotonic_calibrator(
+        calibrator,
+        logits=[-5.0, -0.5, 0.5, 5.0],
+    )
+
+    assert validation_probabilities.shape == validation_logits.shape
+    assert np.all((validation_probabilities >= 0.0) & (validation_probabilities <= 1.0))
+    assert np.all(np.diff(validation_probabilities[np.argsort(validation_logits)]) >= 0.0)
+    assert np.all((test_probabilities >= 0.0) & (test_probabilities <= 1.0))
+    assert calibrator.to_metadata() == metadata_before
+    assert metadata_before["method"] == "isotonic"
+    assert metadata_before["fit_split"] == "validation"
+
+
+def test_isotonic_calibrator_requires_two_validation_classes():
+    with pytest.raises(ValueError, match="both outcome classes"):
+        fit_isotonic_calibrator(
+            validation_logits=[-2.0, -1.0, 0.5, 1.0],
+            validation_labels=[1, 1, 1, 1],
         )
 
 
