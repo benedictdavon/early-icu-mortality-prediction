@@ -1,10 +1,20 @@
 """Shared evaluation utilities for ICU mortality models."""
 
-from evaluation.metrics import binary_classification_metrics
-from evaluation.thresholds import select_optimal_threshold, threshold_table
+from evaluation.bootstrap import bootstrap_metric_ci
+from evaluation.calibration import calibration_summary, expected_calibration_error
+from evaluation.metrics import binary_classification_metrics, compute_binary_metrics
+from evaluation.reporting import evaluate_validation_and_test, make_result_record
+from evaluation.thresholds import select_optimal_threshold, select_thresholds, threshold_table
 
 __all__ = [
     "binary_classification_metrics",
+    "compute_binary_metrics",
+    "select_thresholds",
     "select_optimal_threshold",
     "threshold_table",
+    "evaluate_validation_and_test",
+    "make_result_record",
+    "calibration_summary",
+    "expected_calibration_error",
+    "bootstrap_metric_ci",
 ]
