@@ -737,14 +737,14 @@ tests/test_stacking_oof.py
 
 ## Required MAFNet ablations
 
-- [ ] `MAFNet-T`: temporal branch only.
-- [ ] `MAFNet-T+S`: temporal + static.
-- [ ] `MAFNet-T+S+A`: full model.
-- [ ] `NoDecay`: replace decay logic with zero-imputed GRU.
-- [ ] `NoTransformer`: remove transformer encoder layer.
-- [ ] `NoAux`: remove reconstruction and mask forecast losses.
-- [ ] `NoGate`: replace gated fusion with concatenation.
-- [ ] `NoPretrain`: train from scratch.
+- [x] `MAFNet-T`: temporal branch only.
+- [x] `MAFNet-T+S`: temporal + static.
+- [x] `MAFNet-T+S+A`: full model.
+- [x] `NoDecay`: replace decay logic with zero-imputed GRU.
+- [x] `NoTransformer`: remove transformer encoder layer.
+- [x] `NoAux`: remove reconstruction and mask forecast losses.
+- [x] `NoGate`: replace gated fusion with concatenation.
+- [x] `NoPretrain`: train from scratch.
 - [ ] `XGB+MAFNet`: average calibrated probabilities.
 - [ ] `Stacked`: OOF logistic meta-learner over XGBoost, LightGBM, CatBoost, MAFNet.
 

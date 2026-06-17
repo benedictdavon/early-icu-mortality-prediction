@@ -733,6 +733,11 @@ def train_mafnet_from_bundle(
         transformer_ff_dim=int(model_cfg.get("transformer_ff_dim", 256)),
         transformer_layers=int(model_cfg.get("transformer_layers", 1)),
         temporal_dropout=float(model_cfg.get("temporal_dropout", 0.15)),
+        use_static_branch=bool(model_cfg.get("use_static_branch", True)),
+        use_aggregate_branch=bool(model_cfg.get("use_aggregate_branch", True)),
+        use_decay=bool(model_cfg.get("use_decay", True)),
+        use_transformer=bool(model_cfg.get("use_transformer", True)),
+        use_gated_fusion=bool(model_cfg.get("use_gated_fusion", True)),
     ).to(device)
 
     if pretrained_checkpoint_path is not None:
