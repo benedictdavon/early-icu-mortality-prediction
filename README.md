@@ -36,8 +36,10 @@ and is not redistributed here.
 |   |-- experiments/               # Model-suite and final-report entrypoints
 |   |-- feature_extraction/        # Modular feature extraction helpers
 |   |-- preprocessing/             # Modular preprocessing helpers
+|   |-- training/                  # MAFNet training and neural callbacks
 |   `-- models/
 |       |-- base/                  # Shared base model and persistence helpers
+|       |-- mafnet/                # Missingness-aware temporal fusion network
 |       |-- logistic_regression/   # Logistic regression model and interpretation
 |       |-- random_forest/         # Random forest and bagging variants
 |       `-- xgboost/               # XGBoost model, tuning, and ensemble helpers
@@ -156,6 +158,31 @@ are installed. Missing optional backends are recorded as skipped. Outputs are
 aggregate comparison tables and threshold-policy reports only; row-level
 predictions are not written.
 
+MAFNet first-6-hour temporal model:
+
+```bash
+python src/training/train_mafnet.py \
+  --events-path data/processed/first6h_events.csv \
+  --cohort-path data/processed/cohort.csv \
+  --features-path data/processed/preprocessed_xgboost_expanded_features.csv \
+  --output-dir results/mafnet \
+  --evaluate-test
+```
+
+MAFNet ablations:
+
+```bash
+python src/experiments/run_mafnet_ablations.py \
+  --events-path data/processed/first6h_events.csv \
+  --cohort-path data/processed/cohort.csv \
+  --features-path data/processed/preprocessed_xgboost_expanded_features.csv \
+  --output-dir results/mafnet_ablations
+```
+
+The MAFNet runner writes aggregate metrics, calibration reports, training
+curves, and local checkpoints. Checkpoints and patient-level predictions are
+ignored by git and should not be committed.
+
 Final deliverable summary:
 
 ```bash
@@ -251,6 +278,36 @@ Model families include:
 - random forest bagging
 - XGBoost
 - XGBoost probability-averaging ensemble
+- ICU6H-MAFNet, a custom missingness-aware temporal fusion network
+
+## Custom MAFNet Architecture
+
+MAFNet consumes 15-minute first-6-hour tensors with values, observation masks,
+time-since-last-measurement deltas, and measurement counts. The temporal branch
+uses GRU-D-style value and hidden-state decay followed by optional transformer
+refinement and temporal attention. Static and aggregate first-window feature
+branches are encoded with MLPs, then fused with patient-specific gates before a
+binary mortality classifier.
+
+The training runner supports temporal self-supervised pretraining through
+masked value reconstruction and next-bin measurement forecasting, followed by
+supervised fine-tuning with weighted BCE and small auxiliary losses. Calibration
+is fit on validation logits only, using Platt scaling by default with optional
+isotonic calibration for ablation.
+
+Architecture ablations include temporal-only, temporal+static, full
+temporal+static+aggregate, no decay, no transformer, no auxiliary losses, no
+gated fusion, and no pretraining. Ensemble helpers support averaging calibrated
+XGBoost and MAFNet probabilities and an out-of-fold logistic stacker.
+
+## Subgroup Analysis
+
+Subgroup reporting utilities compute aggregate metrics across age group, sex,
+major diagnosis group, lactate measured status, missingness level, measurement
+intensity quartile, ICU unit type when available, and ventilation status when
+available. Reports include subgroup size, mortality rate, AUC-ROC, average
+precision, Brier score, calibration slope/intercept, and threshold metrics.
+Small subgroups are flagged for cautious interpretation.
 
 ## Course And Acknowledgment
 

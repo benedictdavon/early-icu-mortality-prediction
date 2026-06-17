@@ -834,11 +834,11 @@ reports/final_plots/
 - [x] Cohort definition.
 - [x] First-6-hour observation window.
 - [x] Models compared.
-- [ ] Custom MAFNet architecture summary.
+- [x] Custom MAFNet architecture summary.
 - [x] Evaluation protocol.
 - [x] Main results.
 - [x] Calibration and threshold policy.
-- [ ] Subgroup analysis.
+- [x] Subgroup analysis.
 - [x] Leakage prevention.
 - [x] Reproducibility instructions.
 - [x] Limitations.
@@ -846,15 +846,15 @@ reports/final_plots/
 
 ## Final report plots
 
-- [ ] ROC curve.
-- [ ] PR curve.
-- [ ] Calibration curve.
-- [ ] Threshold tradeoff curve.
-- [ ] Confusion matrix at three thresholds.
-- [ ] SHAP feature importance for best tree model.
-- [ ] MAFNet temporal attention plot using synthetic/deidentified example only.
-- [ ] Subgroup performance plot.
-- [ ] Ablation bar chart.
+- [x] ROC curve.
+- [x] PR curve.
+- [x] Calibration curve.
+- [x] Threshold tradeoff curve.
+- [x] Confusion matrix at three thresholds.
+- [x] SHAP feature importance for best tree model.
+- [x] MAFNet temporal attention plot using synthetic/deidentified example only.
+- [x] Subgroup performance plot.
+- [x] Ablation bar chart.
 
 ## Done criteria
 
