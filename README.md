@@ -169,7 +169,8 @@ Model families include:
 
 ## Course And Acknowledgment
 
-Course: AI in EHR / AI Capstone 2025, National Yang Ming Chiao Tung University.
+Course: Artificial Intelligence Capstone (人工智慧總整與實作) 2025, National Yang Ming Chiao Tung University.
+Instructor: 王才沛
 
 This repository reflects my personal implementation and exploration of a course
 final project originally conducted as a group assignment.
