@@ -1,0 +1,30 @@
+project:
+  name: early_icu_mortality_prediction
+  prediction_window_hours: 6
+  target_column: mortality
+  random_seed: 42
+
+splitting:
+  test_size: 0.20
+  valid_size: 0.20
+  stratify: true
+  group_by_patient: true
+  patient_id_column: subject_id
+
+evaluation:
+  threshold_selection_split: validation
+  final_reporting_split: test
+  threshold_policies:
+    - high_sensitivity
+    - balanced_f1
+    - high_precision
+  metrics:
+    - auc_roc
+    - average_precision
+    - brier_score
+    - accuracy
+    - precision
+    - recall
+    - specificity
+    - f1
+    - npv

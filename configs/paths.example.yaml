@@ -1,0 +1,6 @@
+data_dir: "C:/path/to/authorized/icu-data"
+processed_dir: "C:/path/to/authorized/icu-data/processed"
+results_dir: "C:/path/to/local/results"
+
+# Copy to configs/paths.yaml for local runs. Do not commit real restricted-data
+# paths or credentials.

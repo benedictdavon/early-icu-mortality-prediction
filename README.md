@@ -124,14 +124,31 @@ python tools/check_leakage.py --data-path data/processed/preprocessed_xgboost_fe
 
 The training code uses stratified train/validation/test splits. Thresholds are
 selected on validation data; the held-out test set is used for final reporting.
+When patient identifiers are available, the split utilities keep patients from
+appearing in more than one split.
 
 Primary metrics:
 
 - AUC-ROC
+- average precision / PR-AUC
+- Brier score
+- calibration summaries
 - precision
 - recall
 - F1 score
 - specificity / NPV for threshold analysis
+
+Threshold policies are selected on validation probabilities only and then
+applied unchanged to test probabilities:
+
+- high sensitivity
+- balanced F1
+- high precision
+
+See [`docs/evaluation_protocol.md`](docs/evaluation_protocol.md) and
+[`docs/leakage_checklist.md`](docs/leakage_checklist.md). The aggregate result
+format is documented in
+[`docs/experiment_result_schema.md`](docs/experiment_result_schema.md).
 
 ## Reported Results
 
@@ -146,7 +163,8 @@ Results from the original course experiment:
 
 Interpret these as retrospective experimental metrics, not deployment
 performance. Re-running after code or threshold-protocol changes may produce
-different F1/threshold values.
+different F1/threshold values. Threshold-specific numbers are historical until
+the models are rerun under the corrected validation-threshold protocol.
 
 ## Methods
 
