@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
 import os
+import argparse
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import seaborn as sns
 from scipy import stats
 
 from preprocessing import *
@@ -178,17 +178,51 @@ def enhanced_preprocess_pipeline(
     return df
 
 
-if __name__ == "__main__":
-    # Set paths
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Preprocess extracted ICU mortality features"
+    )
+    parser.add_argument(
+        "--input-path",
+        default=None,
+        help="Input extracted features CSV",
+    )
+    parser.add_argument(
+        "--output-path",
+        default=None,
+        help="Output preprocessed features CSV",
+    )
+    parser.add_argument(
+        "--model-type",
+        choices=["logistic", "xgboost", "random_forest", "all"],
+        default="all",
+        help="Model-specific preprocessing target",
+    )
+    parser.add_argument(
+        "--report-dir",
+        default=None,
+        help="Directory for preprocessing reports",
+    )
+    return parser.parse_args()
+
+
+def main(args=None):
+    args = args or parse_args()
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    input_path = os.path.join(base_dir, "data", "processed", "extracted_features.csv")
-    report_dir = os.path.join(base_dir, "figures")
+    input_path = args.input_path or os.path.join(
+        base_dir, "data", "processed", "extracted_features.csv"
+    )
+    report_dir = args.report_dir or os.path.join(base_dir, "figures")
     
     # Target column for prediction
     target_column = "mortality"
     
     # Process data for different models
-    model_types = ['logistic', 'xgboost', 'random_forest']
+    model_types = (
+        ['logistic', 'xgboost', 'random_forest']
+        if args.model_type == "all"
+        else [args.model_type]
+    )
     
     for model_type in model_types:
         print(f"\n{'='*50}")
@@ -196,9 +230,12 @@ if __name__ == "__main__":
         print(f"{'='*50}")
         
         # Create model-specific output path
-        output_path = os.path.join(
-            base_dir, "data", "processed", f"preprocessed_{model_type}_features.csv"
-        )
+        if args.output_path and len(model_types) == 1:
+            output_path = args.output_path
+        else:
+            output_path = os.path.join(
+                base_dir, "data", "processed", f"preprocessed_{model_type}_features.csv"
+            )
         
         # Run the pipeline with model-specific settings
         preprocessed_df = enhanced_preprocess_pipeline(
@@ -213,3 +250,7 @@ if __name__ == "__main__":
         print(f"Completed preprocessing for {model_type} model")
     
     print("\nAll preprocessing tasks completed!")
+
+
+if __name__ == "__main__":
+    main()

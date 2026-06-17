@@ -3,9 +3,13 @@ import pandas as pd
 import numpy as np
 from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_classif, mutual_info_classif, RFE
 from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
 import warnings
 warnings.filterwarnings('ignore')
+
+try:
+    from xgboost import XGBClassifier
+except ImportError:
+    XGBClassifier = None
 
 def remove_irrelevant_columns(df, target_col=None):
     """
@@ -219,6 +223,10 @@ def model_based_feature_selection(df, target_col, model_type='xgboost', k=50, ma
     
     # Choose model
     if model_type.lower() == 'xgboost':
+        if XGBClassifier is None:
+            raise ImportError(
+                "XGBoost feature selection requires xgboost. Install requirements.txt first."
+            )
         model = XGBClassifier(
             n_estimators=100, 
             learning_rate=0.1, 
@@ -234,6 +242,10 @@ def model_based_feature_selection(df, target_col, model_type='xgboost', k=50, ma
         )
     else:
         print(f"Unknown model type: {model_type}, using XGBoost")
+        if XGBClassifier is None:
+            raise ImportError(
+                "XGBoost feature selection requires xgboost. Install requirements.txt first."
+            )
         model = XGBClassifier(
             use_label_encoder=False, 
             eval_metric='logloss',

@@ -1,4 +1,9 @@
-import os, time, json, joblib, warnings, numpy as np, pandas as pd, matplotlib.pyplot as plt, seaborn as sns
+import os, time, json, joblib, warnings, numpy as np, pandas as pd, matplotlib.pyplot as plt
+
+try:
+    import seaborn as sns
+except ImportError:
+    sns = None
 
 from xgboost import XGBClassifier
 
@@ -499,12 +504,15 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
             }
         ).sort_values("importance_mean", ascending=False)
 
-        plt.figure(figsize=(11, 9))
-        sns.barplot(y="feature", x="importance_mean", data=perm_df.head(25))
-        plt.title(f"{self.model_name} - permutation importance (top 25)")
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, "permutation_importance.png"), dpi=300)
-        plt.close()
+        if sns is not None:
+            plt.figure(figsize=(11, 9))
+            sns.barplot(y="feature", x="importance_mean", data=perm_df.head(25))
+            plt.title(f"{self.model_name} - permutation importance (top 25)")
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.output_dir, "permutation_importance.png"), dpi=300)
+            plt.close()
+        else:
+            warnings.warn("Skipping permutation importance plot because seaborn is not installed")
 
         perm_df.to_csv(os.path.join(self.output_dir, "permutation_importance.csv"), index=False)
         return perm_df
@@ -1046,6 +1054,9 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         from sklearn.metrics import confusion_matrix
 
         cm = confusion_matrix(y_true, y_pred)
+        if sns is None:
+            warnings.warn("Skipping confusion matrix plot because seaborn is not installed")
+            return
         plt.figure(figsize=(8, 6))
         sns.heatmap(
             cm,
