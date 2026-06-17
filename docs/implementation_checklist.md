@@ -745,8 +745,8 @@ tests/test_stacking_oof.py
 - [x] `NoAux`: remove reconstruction and mask forecast losses.
 - [x] `NoGate`: replace gated fusion with concatenation.
 - [x] `NoPretrain`: train from scratch.
-- [ ] `XGB+MAFNet`: average calibrated probabilities.
-- [ ] `Stacked`: OOF logistic meta-learner over XGBoost, LightGBM, CatBoost, MAFNet.
+- [x] `XGB+MAFNet`: average calibrated probabilities.
+- [x] `Stacked`: OOF logistic meta-learner over XGBoost, LightGBM, CatBoost, MAFNet.
 
 ## Done criteria
 
