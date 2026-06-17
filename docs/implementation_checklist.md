@@ -508,7 +508,7 @@ Create the data tensors needed by ICU6H-MAFNet.
 src/data/temporal_dataset.py
 src/features/temporal_tensor_builder.py
 src/features/temporal_channels.py
-configs/icu6h_mafnet.yaml
+configs/mafnet.yaml
 tests/test_temporal_tensor_builder.py
 ```
 
@@ -615,25 +615,25 @@ Build the custom missingness-aware temporal fusion model.
 ## Files to create or update
 
 ```text
-src/models/icu6h_mafnet.py
+src/models/mafnet/model.py
 src/training/losses.py
 src/training/train_mafnet.py
 src/training/callbacks.py
 src/evaluation/mafnet_eval.py
-configs/icu6h_mafnet.yaml
+configs/mafnet.yaml
 tests/test_mafnet_forward.py
 tests/test_mafnet_loss.py
 ```
 
 ## Architecture modules
 
-- [ ] `MissingnessAwareTemporalEncoder`
-- [ ] `StaticEncoder`
-- [ ] `AggregateEncoder`
-- [ ] `GatedFusion`
-- [ ] `MortalityClassifier`
-- [ ] `TemporalReconstructionHead`
-- [ ] `MeasurementForecastHead`
+- [x] `MissingnessAwareTemporalEncoder`
+- [x] `StaticEncoder`
+- [x] `AggregateEncoder`
+- [x] `GatedFusion`
+- [x] `MortalityClassifier`
+- [x] `TemporalReconstructionHead`
+- [x] `MeasurementForecastHead`
 
 ## Forward pass output
 
@@ -653,20 +653,20 @@ Return:
 
 ### Stage 1: pretraining
 
-- [ ] Train temporal encoder and auxiliary heads.
-- [ ] Randomly hide 15% of observed values.
-- [ ] Use reconstruction + mask forecast loss.
-- [ ] Use training split only.
-- [ ] Save checkpoint locally, not in public repo.
+- [x] Train temporal encoder and auxiliary heads.
+- [x] Randomly hide 15% of observed values.
+- [x] Use reconstruction + mask forecast loss.
+- [x] Use training split only.
+- [x] Save checkpoint locally, not in public repo.
 
 ### Stage 2: supervised fine-tuning
 
-- [ ] Load pretrained temporal encoder.
-- [ ] Train full model.
-- [ ] Use weighted BCE for mortality.
-- [ ] Keep auxiliary losses active with small weights.
-- [ ] Early stop on validation average precision.
-- [ ] Save aggregate training curves.
+- [x] Load pretrained temporal encoder.
+- [x] Train full model.
+- [x] Use weighted BCE for mortality.
+- [x] Keep auxiliary losses active with small weights.
+- [x] Early stop on validation average precision.
+- [x] Save aggregate training curves.
 
 ## Done criteria
 
@@ -697,15 +697,15 @@ tests/test_calibration.py
 
 ## Implementation checklist
 
-- [ ] Fit Platt scaling on validation logits only.
+- [x] Fit Platt scaling on validation logits only.
 - [ ] Optionally add isotonic calibration as ablation.
-- [ ] Apply calibration to validation and test probabilities.
+- [x] Apply calibration to validation and test probabilities.
 - [x] Select three thresholds using validation probabilities:
   - [x] screening
   - [x] balanced F1
   - [x] high precision
 - [x] Apply fixed thresholds to test.
-- [ ] Plot calibration curve.
+- [x] Plot calibration curve.
 - [x] Compute Brier score.
 - [x] Compute ECE.
 - [x] Save threshold report.
