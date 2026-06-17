@@ -122,20 +122,26 @@ def generate_table_one(features, output_dir, group_col=None):
     
     return table_one_df
 
-def save_features(features, output_dir):
+def save_features(
+    features,
+    output_dir,
+    *,
+    features_filename="extracted_features.csv",
+    stats_filename="feature_statistics.csv",
+):
     """Save features and generate descriptive statistics."""
     # Clean up and save
     final_features = features.copy(deep=True)
 
     # Save features to CSV
-    features_path = os.path.join(output_dir, 'extracted_features.csv')
+    features_path = os.path.join(output_dir, features_filename)
     final_features.to_csv(features_path, index=False)
     print(f"Saved {len(final_features)} patient records with {len(final_features.columns)} features to {features_path}")
 
     # Basic descriptive analysis for Table 1
     stats = final_features.describe().T
     stats['missing_pct'] = 100 * final_features.isnull().sum() / len(final_features)
-    stats_path = os.path.join(output_dir, 'feature_statistics.csv')
+    stats_path = os.path.join(output_dir, stats_filename)
     stats.to_csv(stats_path, index=True)
     print(f"Saved descriptive statistics to {stats_path}")
     

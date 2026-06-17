@@ -1,6 +1,7 @@
 feature_engineering:
   phase: 3
   name: expanded_first_6h_tabular_features
+  enabled: false
   status: available_as_tested_building_blocks
 
 observation_window:

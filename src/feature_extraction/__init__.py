@@ -20,6 +20,14 @@ from .clinical_features import (
     add_log_transformations,
     clean_clinical_measurements
 )
+from .phase3_expanded import (
+    DEFAULT_PHASE3_CONFIG,
+    add_expanded_derived_features,
+    build_phase3_long_events,
+    extract_expanded_event_features,
+    load_phase3_feature_config,
+    phase3_features_enabled,
+)
 from .labels import add_mortality_labels
 from .reporting import save_features, generate_table_one
 
@@ -31,6 +39,12 @@ __all__ = [
     "extract_early_window_features", "extract_early_window_values", "add_early_change_features",
     "add_clinical_derived_features", "create_clinical_interaction_features",
     "add_log_transformations", "clean_clinical_measurements",
+    "DEFAULT_PHASE3_CONFIG",
+    "add_expanded_derived_features",
+    "build_phase3_long_events",
+    "extract_expanded_event_features",
+    "load_phase3_feature_config",
+    "phase3_features_enabled",
     "add_mortality_labels",
     "save_features", "generate_table_one"
 ]

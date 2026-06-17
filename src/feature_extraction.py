@@ -1,11 +1,50 @@
 import pandas as pd
 import os
+import argparse
 
 from feature_extraction import *
 from config import hosp_path, icu_path, label_path
 
 
-def main():
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Extract first-6-hour ICU mortality features"
+    )
+    parser.add_argument(
+        "--feature-config",
+        default=str(DEFAULT_PHASE3_CONFIG),
+        help="Path to Phase 3 expanded feature config",
+    )
+    phase3_group = parser.add_mutually_exclusive_group()
+    phase3_group.add_argument(
+        "--enable-phase3-features",
+        action="store_true",
+        help="Enable expanded Phase 3 first-6-hour feature builders",
+    )
+    phase3_group.add_argument(
+        "--disable-phase3-features",
+        action="store_true",
+        help="Disable expanded Phase 3 first-6-hour feature builders",
+    )
+    return parser.parse_args()
+
+
+def _phase3_override_from_args(args):
+    if args.enable_phase3_features:
+        return True
+    if args.disable_phase3_features:
+        return False
+    return None
+
+
+def main(feature_config_path=None, enable_phase3_features=None):
+    phase3_config = load_phase3_feature_config(feature_config_path)
+    use_phase3_features = phase3_features_enabled(
+        phase3_config,
+        override=enable_phase3_features,
+    )
+    print(f"Phase 3 expanded features: {'enabled' if use_phase3_features else 'disabled'}")
+
     # Setup
     output_dir = setup_directories()
     
@@ -46,6 +85,17 @@ def main():
     # Extract vital signs using time-weighted averaging
     vital_df = extract_vital_signs_parallel(cohort, chart_data)
     features = features.merge(vital_df, on='stay_id', how='left')
+
+    if use_phase3_features:
+        print("Extracting expanded Phase 3 event-derived features...")
+        phase3_event_df = extract_expanded_event_features(
+            cohort,
+            chart_data=chart_data,
+            hospital_path=hosp_path,
+            config=phase3_config,
+        )
+        features = features.merge(phase3_event_df, on='stay_id', how='left')
+        print(f"After merging Phase 3 event features, shape: {features.shape}")
     
     # Free up memory
     del chart_data
@@ -86,13 +136,33 @@ def main():
     
     # Add clinically meaningful derived features
     features = add_clinical_derived_features(features)
+
+    if use_phase3_features:
+        print("Adding expanded Phase 3 derived features...")
+        features = add_expanded_derived_features(features, config=phase3_config)
+        print(f"After adding Phase 3 derived features, shape: {features.shape}")
     
     # Add mortality outcome labels
     features = add_mortality_labels(features, label_path)
 
 
     # Save features and generate statistics
-    final_features, stats = save_features(features, output_dir)
+    features_filename = (
+        'extracted_features_phase3.csv'
+        if use_phase3_features
+        else 'extracted_features.csv'
+    )
+    stats_filename = (
+        'feature_statistics_phase3.csv'
+        if use_phase3_features
+        else 'feature_statistics.csv'
+    )
+    final_features, stats = save_features(
+        features,
+        output_dir,
+        features_filename=features_filename,
+        stats_filename=stats_filename,
+    )
     
 
     # Generate Table One if outcome data is available
@@ -103,4 +173,8 @@ def main():
     return final_features
 
 if __name__ == "__main__":
-    main()
+    parsed_args = parse_args()
+    main(
+        feature_config_path=parsed_args.feature_config,
+        enable_phase3_features=_phase3_override_from_args(parsed_args),
+    )
