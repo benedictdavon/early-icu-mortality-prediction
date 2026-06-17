@@ -5,32 +5,32 @@ from __future__ import annotations
 
 VITAL_CHANNEL_BASES = (
     "heart_rate",
-    "resp_rate",
-    "map",
-    "temp",
+    "respiratory_rate",
     "sbp",
     "dbp",
+    "map",
+    "temperature",
     "spo2",
 )
 
 LAB_CHANNEL_BASES = (
-    "bun",
-    "alkaline_phosphatase",
-    "albumin",
-    "bilirubin",
-    "creatinine",
-    "glucose",
-    "platelets",
-    "hemoglobin",
     "wbc",
+    "hemoglobin",
+    "hematocrit",
+    "platelets",
     "sodium",
     "potassium",
+    "creatinine",
+    "bun",
+    "glucose",
+    "bilirubin",
+    "alkaline_phosphatase",
+    "alt",
+    "ast",
+    "inr",
     "lactate",
-    "hematocrit",
-    "chloride",
     "bicarbonate",
     "anion_gap",
-    "inr",
 )
 
 DERIVED_BIN_CHANNELS = (

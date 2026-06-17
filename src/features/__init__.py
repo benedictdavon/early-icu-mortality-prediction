@@ -20,6 +20,7 @@ from features.temporal_tensor_builder import (
     TemporalTensorNormalizer,
     build_15min_temporal_tensors,
     fit_transform_temporal_bundle,
+    transform_temporal_splits,
 )
 
 __all__ = [
@@ -40,4 +41,5 @@ __all__ = [
     "TemporalTensorNormalizer",
     "build_15min_temporal_tensors",
     "fit_transform_temporal_bundle",
+    "transform_temporal_splits",
 ]

@@ -1,0 +1,61 @@
+data:
+  time_window_hours: 6
+  bin_minutes: 15
+  num_time_steps: 24
+  temporal_channels: 43
+  value_clip_z: 5.0
+  delta_clip_hours: 6.0
+  count_clip: 10
+
+model:
+  name: icu6h_mafnet
+  temporal_hidden_dim: 128
+  transformer_layers: 1
+  transformer_heads: 4
+  transformer_ff_dim: 256
+  temporal_dropout: 0.15
+  static_hidden_dim: 64
+  aggregate_hidden_dim_1: 128
+  aggregate_hidden_dim_2: 96
+  fusion_dim: 128
+  classifier_hidden_1: 128
+  classifier_hidden_2: 64
+  classifier_dropout_1: 0.25
+  classifier_dropout_2: 0.15
+
+training:
+  batch_size: 256
+  pretrain_epochs: 20
+  max_epochs: 150
+  early_stopping_patience: 20
+  optimizer: adamw
+  pretrain_lr: 0.001
+  finetune_lr: 0.0003
+  weight_decay: 0.0001
+  gradient_clip_norm: 1.0
+  pos_weight_strategy: sqrt_neg_pos_ratio
+  scheduler: reduce_on_plateau
+  scheduler_factor: 0.5
+  scheduler_patience: 5
+  min_lr: 0.00001
+
+loss:
+  mortality_loss: weighted_bce_with_logits
+  lambda_recon: 0.05
+  lambda_mask: 0.01
+  random_observed_mask_rate: 0.15
+
+evaluation:
+  early_stopping_metric: average_precision
+  calibration: platt_scaling
+  threshold_selection_split: validation
+  report_metrics:
+    - auc_roc
+    - average_precision
+    - brier_score
+    - accuracy
+    - precision
+    - recall
+    - f1
+    - specificity
+    - npv

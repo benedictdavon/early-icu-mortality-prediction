@@ -586,17 +586,17 @@ critical_value_count_bin
 
 ## Implementation checklist
 
-- [ ] Build 15-minute bins.
-- [ ] Compute per-bin values.
-- [ ] Compute masks.
-- [ ] Compute deltas per channel.
-- [ ] Compute counts per channel.
-- [ ] Fit temporal normalizer on training observed values only.
-- [ ] Apply same normalizer to validation/test.
-- [ ] Clip standardized values to [-5, 5].
-- [ ] Store missing standardized values as 0.0.
-- [ ] Log-transform deltas and counts.
-- [ ] Add tests for a tiny synthetic patient with known expected tensor values.
+- [x] Build 15-minute bins.
+- [x] Compute per-bin values.
+- [x] Compute masks.
+- [x] Compute deltas per channel.
+- [x] Compute counts per channel.
+- [x] Fit temporal normalizer on training observed values only.
+- [x] Apply same normalizer to validation/test.
+- [x] Clip standardized values to [-5, 5].
+- [x] Store missing standardized values as 0.0.
+- [x] Log-transform deltas and counts.
+- [x] Add tests for a tiny synthetic patient with known expected tensor values.
 
 ## Done criteria
 

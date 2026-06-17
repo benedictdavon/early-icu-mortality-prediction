@@ -676,7 +676,7 @@ test_no_post_6h_events_used
 Implement ICU6H-MAFNet exactly as specified in:
 
 ```text
-03_icu6h_mafnet_model_architecture.md
+icu6h_mafnet_architecture.md
 ```
 
 Primary comparisons:
