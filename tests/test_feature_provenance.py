@@ -23,6 +23,9 @@ def test_feature_dictionary_has_required_schema_and_groups():
         "missingness",
         "derived_clinical",
         "trajectory",
+        "measurement_process",
+        "organ_dysfunction",
+        "interaction",
     }.issubset(set(dictionary["feature_group"]))
     assert set(dictionary["leakage_risk"]).issubset(
         {"low", "medium", "high", "excluded"}
@@ -49,6 +52,17 @@ def test_existing_feature_families_have_provenance_matches():
         "lactate_mean_missing",
         "spo2_pct_change",
         "spo2_mean_dist_from_normal",
+        "heart_rate_bin_5_6h_last",
+        "heart_rate_bin_5_6h_count",
+        "heart_rate_first",
+        "heart_rate_slope_0_6h",
+        "heart_rate_measurement_count_0_6h",
+        "heart_rate_time_since_last_measurement_at_6h",
+        "total_vital_measurements_0_6h",
+        "cardiovascular_dysfunction",
+        "organ_dysfunction_count",
+        "age_x_shock_index",
+        "resp_rate_x_spo2_deficit",
     ]
 
     result = validate_feature_provenance(feature_names)
