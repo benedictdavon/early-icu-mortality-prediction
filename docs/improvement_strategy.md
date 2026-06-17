@@ -577,10 +577,10 @@ Stage 2:
 ## Implementation tasks
 
 - Create `src/data/temporal_dataset.py`.
-- Create `src/models/icu6h_mafnet.py`.
+- Create `src/models/mafnet/model.py`.
 - Create `src/training/train_mafnet.py`.
 - Create `src/training/losses.py`.
-- Create `configs/icu6h_mafnet.yaml`.
+- Create `configs/mafnet.yaml`.
 - Add ablations:
   - temporal only
   - temporal + static
@@ -601,7 +601,7 @@ Stage 2:
 - Ablation results are reported.
 - MAFNet is compared against XGBoost and LightGBM.
 
-See `03_icu6h_mafnet_model_architecture.md` for full build details.
+See `docs/icu6h_mafnet_architecture.md` for full build details.
 
 ---
 

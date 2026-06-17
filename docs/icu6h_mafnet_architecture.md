@@ -944,7 +944,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class ICU6HMAFNet(nn.Module):
+class MAFNet(nn.Module):
     def __init__(
         self,
         n_temporal_channels: int,

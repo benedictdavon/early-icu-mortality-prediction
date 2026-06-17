@@ -8,7 +8,7 @@ data:
   count_clip: 10
 
 model:
-  name: icu6h_mafnet
+  name: mafnet
   temporal_hidden_dim: 128
   transformer_layers: 1
   transformer_heads: 4
