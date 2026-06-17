@@ -30,15 +30,22 @@ The first portfolio upgrade is evaluation rigor:
 
 ## Near-Term Roadmap
 
-Phase 2 should focus on feature provenance and first-6-hour feature engineering:
+Phase 2 now establishes feature provenance and first-6-hour leakage controls:
 
 - feature dictionary with source table, time window, aggregation, missingness,
   and leakage-risk metadata
+- synthetic timestamp fixtures proving post-6-hour events are excluded
+
+Phase 3 expands tabular first-window feature engineering as tested building
+blocks:
+
 - temporal bin features
 - trajectory features
 - measurement-process features
 - organ dysfunction proxy features
-- synthetic timestamp fixtures proving post-6-hour events are excluded
+- focused clinical interaction features
+
+Historical model metrics have not yet been rerun with Phase 3 features.
 
 ICU6H-MAFNet should wait until the evaluation protocol, feature provenance, and
 tabular baselines are stable.

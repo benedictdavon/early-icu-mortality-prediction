@@ -52,6 +52,16 @@ Known Phase 2 provenance note:
   admission-time-known diagnoses.
 - BMI extraction is now restricted to first-6-hour height/weight measurements.
 
+Phase 3 feature-engineering note:
+
+- Hourly bins, trajectory summaries, and measurement-process features must be
+  built only after applying the first-6-hour timestamp filter.
+- Organ dysfunction proxies and interactions must derive only from first-window
+  clinical summaries or pre-ICU diagnosis history.
+- The expanded feature configuration is documented in
+  `configs/features_expanded.yaml`; adding new generated names should require a
+  matching row or regex in `src/features/provenance.py`.
+
 ## Automated Checks
 
 Synthetic tests should run without restricted data and verify:
@@ -61,3 +71,5 @@ Synthetic tests should run without restricted data and verify:
 - no patient overlap across splits
 - target and obvious leakage columns excluded from model features
 - train-only preprocessing fit behavior where testable
+- post-6-hour events excluded from expanded feature builders while exact
+  6-hour boundary events remain eligible

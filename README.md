@@ -151,6 +151,8 @@ format is documented in
 [`docs/experiment_result_schema.md`](docs/experiment_result_schema.md).
 Feature provenance is tracked in
 [`docs/feature_dictionary.csv`](docs/feature_dictionary.csv).
+The expanded first-6-hour feature plan is documented in
+[`configs/features_expanded.yaml`](configs/features_expanded.yaml).
 
 ## Reported Results
 
@@ -174,10 +176,18 @@ Feature groups include:
 
 - demographics
 - early vital-sign statistics and trends
+- hourly first-6-hour vital/lab bins
+- first-vs-last trajectory summaries
 - lab summaries
+- measurement-process features such as early count and timing
 - missingness indicators
 - prior diagnosis summaries
-- clinically derived features such as shock index and SIRS criteria count
+- clinically derived features such as shock index, SIRS criteria count, organ
+  dysfunction proxies, and focused clinical interactions
+
+Phase 3 expanded feature builders are synthetic-tested for first-6-hour
+filtering, but historical model metrics have not yet been rerun with those
+features.
 
 Model families include:
 
