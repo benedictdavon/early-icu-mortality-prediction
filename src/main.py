@@ -5,44 +5,60 @@ from pathlib import Path
 
 # Add the src directory to path to ensure imports work correctly
 sys.path.append(str(Path(__file__).parent))
-from models.random_forest import ICUMortalityRandomForest
-from models.logistic_regression import ICUMortalityLogisticRegression
-from models.xgboost import ICUMortalityXGBoost
-from models.rf_bagging import ICUMortalityRandomForestBagging
 
 
-# Update the argument parser to include xgboost-ensemble
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Train a model for ICU mortality prediction')
     parser.add_argument('--model', type=str, default='random_forest', 
-        choices=['random_forest', 'logistic_regression', 'xgboost', 'xgboost_ensemble', 'rf_bagging'],
+        choices=['random_forest', 'logistic_regression', 'xgboost', 'xgboost_ensemble', 'xgboost-ensemble', 'rf_bagging'],
         help='Model type to train (default: random_forest)')
 
     parser.add_argument('--data-path', type=str, default=None,
-                        help='Path to preprocessed data (default: data/processed/preprocessed_features.csv)')
+                        help='Path to preprocessed data (default: data/processed/preprocessed_<model>_features.csv)')
     parser.add_argument('--output-dir', type=str, default=None,
                         help='Directory to save results (default: results/<model_type>)')
+    parser.add_argument('--tune', dest='tune', action='store_true',
+                        help='Enable hyperparameter tuning')
     parser.add_argument('--no-tune', dest='tune', action='store_false',
                         help='Skip hyperparameter tuning')
+    parser.add_argument('--early-stopping', dest='early_stopping', action='store_true',
+                        help='Enable early stopping for supported models')
     parser.add_argument('--no-early-stopping', dest='early_stopping', action='store_false',
                         help='Disable early stopping (for tree-based models)')
+    parser.add_argument('--shap', dest='shap', action='store_true',
+                        help='Enable SHAP value analysis for supported models')
     parser.add_argument('--no-shap', dest='shap', action='store_false',
                         help='Skip SHAP value analysis')
     parser.add_argument('--ensemble-size', type=int, default=5, 
                         help='Number of models in ensemble (default: 5)')
     parser.set_defaults(tune=True, early_stopping=True, shap=True)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.model == 'xgboost-ensemble':
+        args.model = 'xgboost_ensemble'
+    return args
 
 def get_model_class(model_type):
     """Return the appropriate model class based on model_type"""
     if model_type == 'random_forest':
+        from models.random_forest import ICUMortalityRandomForest
+
         return ICUMortalityRandomForest
     elif model_type == 'logistic_regression':
+        from models.logistic_regression import ICUMortalityLogisticRegression
+
         return ICUMortalityLogisticRegression
-    elif model_type == 'xgboost' or model_type == 'xgboost-ensemble':
+    elif model_type == 'xgboost':
+        from models.xgboost import ICUMortalityXGBoost
+
+        return ICUMortalityXGBoost
+    elif model_type == 'xgboost_ensemble':
+        from models.xgboost import ICUMortalityXGBoost
+
         return ICUMortalityXGBoost
     elif model_type == 'rf_bagging':
+        from models.rf_bagging import ICUMortalityRandomForestBagging
+
         return ICUMortalityRandomForestBagging
     else:
         raise ValueError(f"Unknown model type: {model_type}")
@@ -231,7 +247,7 @@ if __name__ == "__main__":
     print(f"Data path: {data_path}")
     print(f"Output directory: {output_dir}")
     print(f"Hyperparameter tuning: {'Enabled' if args.tune else 'Disabled'}")
-    if args.model == 'xgboost-ensemble':
+    if args.model == 'xgboost_ensemble':
         print(f"Ensemble size: {args.ensemble_size}")
     else:
         print(f"Early stopping: {'Enabled' if args.early_stopping else 'Disabled'}")
@@ -252,7 +268,7 @@ if __name__ == "__main__":
         model = ModelClass(output_dir=output_dir)
         
         # Train and evaluate model based on type
-        if args.model == 'xgboost-ensemble':
+        if args.model == 'xgboost_ensemble':
             evaluation = train_and_evaluate_ensemble(
                 model=model, 
                 data_path=data_path,
@@ -295,7 +311,7 @@ if __name__ == "__main__":
                     print(f"{i}. {feature}: {importance:.4f}")
         
         # Print evaluation metrics (except for ensemble which handles its own display)
-        if evaluation and args.model != 'xgboost-ensemble':
+        if evaluation and args.model != 'xgboost_ensemble':
             print("\nModel Performance:")
             print(f"Accuracy:  {evaluation['accuracy']:.4f}")
             print(f"Precision: {evaluation['precision']:.4f}")
