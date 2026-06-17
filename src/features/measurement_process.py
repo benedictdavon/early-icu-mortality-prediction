@@ -15,6 +15,7 @@ def compute_measurement_process_features(
     event_time_col: str = "charttime",
     variable_col: str = "variable",
     source_col: str | None = None,
+    expected_variables: list[str] | tuple[str, ...] | set[str] | None = None,
     intime_col: str = "intime",
     window_hours: float = 6.0,
 ) -> pd.DataFrame:
@@ -57,6 +58,11 @@ def compute_measurement_process_features(
     for stay_id, group in windowed.groupby(id_col, sort=False):
         row = feature_rows.setdefault(stay_id, {})
         row["total_measurements_0_6h"] = int(len(group))
+        row["total_chart_event_count_0_6h"] = int(len(group))
+        if expected_variables is not None:
+            observed = set(group["_feature_variable"].dropna())
+            expected = {sanitize_feature_token(item) for item in expected_variables}
+            row["panel_missing_count_0_6h"] = int(len(expected - observed))
 
     if source_col is not None:
         windowed["_feature_source"] = windowed[source_col].map(sanitize_feature_token)
@@ -76,6 +82,8 @@ def compute_measurement_process_features(
         if col.endswith("_measurement_count_0_6h")
         or col.endswith("_measurements_0_6h")
         or col.endswith("_measured_0_6h")
+        or col.endswith("_event_count_0_6h")
+        or col == "panel_missing_count_0_6h"
     ]
     for col in count_cols:
         result[col] = result[col].fillna(0).astype(int)

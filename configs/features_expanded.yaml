@@ -1,6 +1,5 @@
 feature_engineering:
-  phase: 3
-  name: expanded_first_6h_tabular_features
+  capability: expanded_first_6h_tabular_features
   enabled: false
   status: available_as_tested_building_blocks
 
@@ -42,6 +41,18 @@ feature_groups:
       - last_2h_mean
       - last2h_minus_first2h
       - slope_0_6h
+      - deterioration_flag
+      - recovery_flag
+
+  instability:
+    enabled: true
+    features:
+      - range_0_6h
+      - std_0_6h
+      - cv_0_6h
+      - abnormal_count_0_6h
+      - longest_abnormal_run_0_6h
+      - worst_recent_value_0_6h
 
   measurement_process:
     enabled: true
@@ -51,6 +62,8 @@ feature_groups:
       - time_to_first_measurement
       - time_since_last_measurement_at_6h
       - total_measurements_0_6h
+      - panel_missing_count_0_6h
+      - total_chart_event_count_0_6h
 
   organ_dysfunction:
     enabled: true

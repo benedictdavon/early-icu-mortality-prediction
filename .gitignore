@@ -23,7 +23,7 @@ results/
 figures/
 artifacts/
 checkpoints/
-models/
+/models/
 outputs/
 predictions/
 *prediction*
@@ -33,4 +33,6 @@ configs/local*.yaml
 configs/*secret*.yaml
 !tests/fixtures/
 !tests/fixtures/*.csv
-docs/
+docs/*
+!docs/feature_dictionary.csv
+!docs/*.md

@@ -120,7 +120,7 @@ FEATURE_PROVENANCE_REGISTRY = (
         is_missingness_indicator=False,
         leakage_risk="low",
         allowed_for_model=True,
-        notes="Legacy extraction previously used a wider BMI window; Phase 2 restricts this to 6h.",
+        notes="Legacy extraction previously used a wider BMI window; current extraction restricts this to 6h.",
     ),
     FeatureProvenance(
         feature_name="bmi_measured",
@@ -268,7 +268,7 @@ FEATURE_PROVENANCE_REGISTRY = (
     ),
     FeatureProvenance(
         feature_name="trajectory_summary",
-        feature_pattern=rf"({VITALS}|{LABS})_(first|last|last_minus_first|percent_change|first_2h_mean|last_2h_mean|last2h_minus_first2h|slope_0_6h)",
+        feature_pattern=rf"({VITALS}|{LABS})_(first|last|last_minus_first|percent_change|first_2h_mean|last_2h_mean|last2h_minus_first2h|slope_0_6h|deterioration_flag|recovery_flag)",
         feature_group="trajectory",
         source_table="icu/chartevents or hosp/labevents",
         source_variable="vital/lab itemids",
@@ -283,8 +283,24 @@ FEATURE_PROVENANCE_REGISTRY = (
         allowed_for_model=True,
     ),
     FeatureProvenance(
+        feature_name="instability_summary",
+        feature_pattern=rf"({VITALS}|{LABS})_(range_0_6h|std_0_6h|cv_0_6h|abnormal_count_0_6h|longest_abnormal_run_0_6h|worst_recent_value_0_6h)",
+        feature_group="instability",
+        source_table="icu/chartevents or hosp/labevents",
+        source_variable="vital/lab itemids",
+        time_window_start="0h",
+        time_window_end="6h",
+        aggregation="range, variability, abnormal event count, abnormal run length, or recent worst value",
+        clinical_rationale="Captures short-window physiologic instability and repeated abnormal measurements.",
+        missingness_handling="downstream imputation; counts use zero when absent",
+        is_binary=False,
+        is_missingness_indicator=False,
+        leakage_risk="low",
+        allowed_for_model=True,
+    ),
+    FeatureProvenance(
         feature_name="measurement_process",
-        feature_pattern=rf"(({VITALS}|{LABS})_(measured_0_6h|measurement_count_0_6h|time_to_first_measurement|time_since_last_measurement_at_6h)|total_(lab|vital|chart)_measurements_0_6h|total_measurements_0_6h)",
+        feature_pattern=rf"(({VITALS}|{LABS})_(measured_0_6h|measurement_count_0_6h|time_to_first_measurement|time_since_last_measurement_at_6h)|total_(lab|vital|chart)_measurements_0_6h|total_measurements_0_6h|total_chart_event_count_0_6h|panel_missing_count_0_6h)",
         feature_group="measurement_process",
         source_table="icu/chartevents or hosp/labevents",
         source_variable="vital/lab event timestamps",
@@ -374,7 +390,8 @@ FEATURE_PROVENANCE_REGISTRY = (
         feature_name="clinical_interaction",
         feature_pattern=(
             r"age_x_prev_dx_count|age_x_shock_index|lactate_x_hypotension|"
-            r"resp_rate_x_spo2_deficit|platelets_x_inr|sirs_x_lactate"
+            r"resp_rate_x_spo2_deficit|platelets_x_inr|sirs_x_lactate|"
+            r"creatinine_x_urine_output|bilirubin_x_inr|critical_count_x_missing_lab_count"
         ),
         feature_group="interaction",
         source_table="derived from first-6h clinical summaries and prior diagnoses",

@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import argparse
+from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
@@ -99,7 +100,7 @@ def enhanced_preprocess_pipeline(
     df = add_polynomial_features(df)
 
     # Step 15: Verify feature scaling
-    df = verify_feature_scaling(df)
+    df = verify_feature_scaling(df, excluded_cols=[target_col] if target_col else None)
 
     # Step 16: Remove redundant features
     df = remove_redundant_features(df)
@@ -165,7 +166,7 @@ def enhanced_preprocess_pipeline(
     df = handle_date_columns(df)
 
     # Step 22: Standardize feature names for compatibility
-    df = standardize_features(df)
+    df = standardize_features(df, excluded_cols=[target_col] if target_col else None)
 
     # Step 23: Save the processed data
     save_processed_data(df, output_path)
@@ -232,6 +233,16 @@ def main(args=None):
         # Create model-specific output path
         if args.output_path and len(model_types) == 1:
             output_path = args.output_path
+        elif args.output_path:
+            output_base = Path(args.output_path)
+            if output_base.suffix:
+                output_path = str(
+                    output_base.with_name(
+                        f"{output_base.stem}_{model_type}{output_base.suffix}"
+                    )
+                )
+            else:
+                output_path = str(output_base / f"preprocessed_{model_type}_features.csv")
         else:
             output_path = os.path.join(
                 base_dir, "data", "processed", f"preprocessed_{model_type}_features.csv"

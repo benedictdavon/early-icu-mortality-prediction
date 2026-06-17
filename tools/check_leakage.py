@@ -16,6 +16,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 
+def prepare_model_matrix(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a numeric matrix suitable for lightweight sklearn probes."""
+    numeric_df = pd.get_dummies(df, dummy_na=True)
+    return numeric_df.fillna(numeric_df.median(numeric_only=True)).fillna(0)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check processed features for leakage signals")
     parser.add_argument(
@@ -49,7 +55,7 @@ def main() -> None:
     duplicate_count = df.duplicated().sum()
     print(f"Exact duplicate rows: {duplicate_count}")
 
-    X = df.drop("mortality", axis=1)
+    X = prepare_model_matrix(df.drop("mortality", axis=1))
     y = df["mortality"]
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=123, stratify=y

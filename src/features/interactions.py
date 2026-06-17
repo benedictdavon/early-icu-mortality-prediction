@@ -29,4 +29,31 @@ def compute_clinical_interaction_features(features: pd.DataFrame) -> pd.DataFram
     if {"sirs_criteria_count", "lactate_mean"}.issubset(df.columns):
         df["sirs_x_lactate"] = df["sirs_criteria_count"] * df["lactate_mean"]
 
+    if {"creatinine_max", "urine_output_total"}.issubset(df.columns):
+        df["creatinine_x_urine_output"] = df["creatinine_max"] * df["urine_output_total"]
+
+    if {"bilirubin_max", "inr_max"}.issubset(df.columns):
+        df["bilirubin_x_inr"] = df["bilirubin_max"] * df["inr_max"]
+
+    critical_count_col = next(
+        (
+            col
+            for col in ["critical_value_count", "critical_value_count_0_6h"]
+            if col in df.columns
+        ),
+        None,
+    )
+    missing_count_col = next(
+        (
+            col
+            for col in ["panel_missing_count_0_6h", "missing_lab_count"]
+            if col in df.columns
+        ),
+        None,
+    )
+    if critical_count_col and missing_count_col:
+        df["critical_count_x_missing_lab_count"] = (
+            df[critical_count_col] * df[missing_count_col]
+        )
+
     return df

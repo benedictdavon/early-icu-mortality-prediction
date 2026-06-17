@@ -12,38 +12,40 @@ def parse_args():
     )
     parser.add_argument(
         "--feature-config",
-        default=str(DEFAULT_PHASE3_CONFIG),
-        help="Path to Phase 3 expanded feature config",
+        default=str(DEFAULT_EXPANDED_FEATURE_CONFIG),
+        help="Path to expanded feature config",
     )
-    phase3_group = parser.add_mutually_exclusive_group()
-    phase3_group.add_argument(
-        "--enable-phase3-features",
+    expanded_group = parser.add_mutually_exclusive_group()
+    expanded_group.add_argument(
+        "--enable-expanded-features",
+        dest="enable_expanded_features",
         action="store_true",
-        help="Enable expanded Phase 3 first-6-hour feature builders",
+        help="Enable expanded first-6-hour feature builders",
     )
-    phase3_group.add_argument(
-        "--disable-phase3-features",
+    expanded_group.add_argument(
+        "--disable-expanded-features",
+        dest="disable_expanded_features",
         action="store_true",
-        help="Disable expanded Phase 3 first-6-hour feature builders",
+        help="Disable expanded first-6-hour feature builders",
     )
     return parser.parse_args()
 
 
-def _phase3_override_from_args(args):
-    if args.enable_phase3_features:
+def _expanded_override_from_args(args):
+    if args.enable_expanded_features:
         return True
-    if args.disable_phase3_features:
+    if args.disable_expanded_features:
         return False
     return None
 
 
-def main(feature_config_path=None, enable_phase3_features=None):
-    phase3_config = load_phase3_feature_config(feature_config_path)
-    use_phase3_features = phase3_features_enabled(
-        phase3_config,
-        override=enable_phase3_features,
+def main(feature_config_path=None, enable_expanded_features=None):
+    expanded_config = load_expanded_feature_config(feature_config_path)
+    use_expanded_features = expanded_features_enabled(
+        expanded_config,
+        override=enable_expanded_features,
     )
-    print(f"Phase 3 expanded features: {'enabled' if use_phase3_features else 'disabled'}")
+    print(f"Expanded features: {'enabled' if use_expanded_features else 'disabled'}")
 
     # Setup
     output_dir = setup_directories()
@@ -86,16 +88,16 @@ def main(feature_config_path=None, enable_phase3_features=None):
     vital_df = extract_vital_signs_parallel(cohort, chart_data)
     features = features.merge(vital_df, on='stay_id', how='left')
 
-    if use_phase3_features:
-        print("Extracting expanded Phase 3 event-derived features...")
-        phase3_event_df = extract_expanded_event_features(
+    if use_expanded_features:
+        print("Extracting expanded event-derived features...")
+        expanded_event_df = extract_expanded_event_features(
             cohort,
             chart_data=chart_data,
             hospital_path=hosp_path,
-            config=phase3_config,
+            config=expanded_config,
         )
-        features = features.merge(phase3_event_df, on='stay_id', how='left')
-        print(f"After merging Phase 3 event features, shape: {features.shape}")
+        features = features.merge(expanded_event_df, on='stay_id', how='left')
+        print(f"After merging expanded event features, shape: {features.shape}")
     
     # Free up memory
     del chart_data
@@ -137,10 +139,10 @@ def main(feature_config_path=None, enable_phase3_features=None):
     # Add clinically meaningful derived features
     features = add_clinical_derived_features(features)
 
-    if use_phase3_features:
-        print("Adding expanded Phase 3 derived features...")
-        features = add_expanded_derived_features(features, config=phase3_config)
-        print(f"After adding Phase 3 derived features, shape: {features.shape}")
+    if use_expanded_features:
+        print("Adding expanded derived features...")
+        features = add_expanded_derived_features(features, config=expanded_config)
+        print(f"After adding expanded derived features, shape: {features.shape}")
     
     # Add mortality outcome labels
     features = add_mortality_labels(features, label_path)
@@ -148,13 +150,13 @@ def main(feature_config_path=None, enable_phase3_features=None):
 
     # Save features and generate statistics
     features_filename = (
-        'extracted_features_phase3.csv'
-        if use_phase3_features
+        'extracted_features_expanded.csv'
+        if use_expanded_features
         else 'extracted_features.csv'
     )
     stats_filename = (
-        'feature_statistics_phase3.csv'
-        if use_phase3_features
+        'feature_statistics_expanded.csv'
+        if use_expanded_features
         else 'feature_statistics.csv'
     )
     final_features, stats = save_features(
@@ -176,5 +178,5 @@ if __name__ == "__main__":
     parsed_args = parse_args()
     main(
         feature_config_path=parsed_args.feature_config,
-        enable_phase3_features=_phase3_override_from_args(parsed_args),
+        enable_expanded_features=_expanded_override_from_args(parsed_args),
     )

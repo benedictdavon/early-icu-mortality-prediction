@@ -9,6 +9,13 @@ from sklearn.metrics import roc_auc_score
 from models.random_forest.model import ICUMortalityRandomForest
 
 
+def _bagging_classifier(base_model, **kwargs):
+    try:
+        return BaggingClassifier(estimator=base_model, **kwargs)
+    except TypeError:
+        return BaggingClassifier(base_estimator=base_model, **kwargs)
+
+
 class ICUMortalityRandomForestBagging(ICUMortalityRandomForest):
     """
     Bagging(RandomForest) model for ICU mortality prediction.
@@ -96,8 +103,8 @@ class ICUMortalityRandomForestBagging(ICUMortalityRandomForest):
         )
 
         # Bagging wrapper
-        self.model = BaggingClassifier(
-            base_estimator=base_rf,
+        self.model = _bagging_classifier(
+            base_rf,
             n_estimators=bagging_estimators,
             max_samples=max_samples,
             bootstrap=True,

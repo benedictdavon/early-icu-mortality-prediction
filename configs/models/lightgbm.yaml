@@ -1,0 +1,30 @@
+model:
+  name: lightgbm
+  enabled: true
+  params:
+    n_estimators: 1000
+    learning_rate: 0.03
+    num_leaves: 31
+    min_child_samples: 50
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_alpha: 0.0
+    reg_lambda: 5.0
+    class_weight: balanced
+    n_jobs: -1
+  search:
+    enabled: false
+    scoring: average_precision
+    cv: 3
+    n_iter: 20
+    param_distributions:
+      num_leaves: [15, 31, 63, 127]
+      max_depth: [-1, 3, 4, 5, 6]
+      learning_rate: [0.01, 0.02, 0.03, 0.05]
+      n_estimators: [500, 1000, 2000]
+      min_child_samples: [20, 50, 100, 200]
+      subsample: [0.6, 0.8, 1.0]
+      colsample_bytree: [0.5, 0.7, 0.9, 1.0]
+      reg_alpha: [0, 0.1, 1, 5]
+      reg_lambda: [0.1, 1, 5, 10]
+      class_weight: [balanced, null]

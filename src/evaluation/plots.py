@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 import matplotlib.pyplot as plt
+from sklearn.calibration import calibration_curve
 from sklearn.metrics import auc, confusion_matrix, precision_recall_curve, roc_curve
 
 
@@ -55,9 +56,38 @@ def save_precision_recall_curve(y_true, y_score, output_path, title="Precision-R
     plt.close()
 
 
+def save_calibration_curve(
+    y_true,
+    y_score,
+    output_path,
+    title="Calibration Curve",
+    n_bins=10,
+):
+    """Save a reliability diagram for predicted probabilities."""
+    prob_true, prob_pred = calibration_curve(
+        y_true,
+        y_score,
+        n_bins=n_bins,
+        strategy="uniform",
+    )
+    plt.figure(figsize=(8, 6))
+    plt.plot(prob_pred, prob_true, marker="o", lw=2, label="Model")
+    plt.plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--", label="Perfectly calibrated")
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.0])
+    plt.xlabel("Mean Predicted Probability")
+    plt.ylabel("Observed Event Rate")
+    plt.title(title)
+    plt.legend(loc="upper left")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+
+
 def evaluation_plot_paths(output_dir):
     return {
         "confusion_matrix": os.path.join(output_dir, "confusion_matrix.png"),
         "roc_curve": os.path.join(output_dir, "roc_curve.png"),
         "precision_recall_curve": os.path.join(output_dir, "precision_recall_curve.png"),
+        "calibration_curve": os.path.join(output_dir, "calibration_curve.png"),
     }

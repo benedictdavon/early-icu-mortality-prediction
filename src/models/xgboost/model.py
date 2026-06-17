@@ -114,7 +114,7 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
                     "device": "cuda",
                 }
             )
-            model = XGBClassifier(**params, random_state=42, use_label_encoder=False)
+            model = XGBClassifier(**params, random_state=42)
 
             # Cross-validate
             cv_scores = []
@@ -125,7 +125,6 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
                 model = XGBClassifier(
                     **params,
                     random_state=42,
-                    use_label_encoder=False,
                     early_stopping_rounds=30,
                 )
 
@@ -159,72 +158,6 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         """
         Perform cross-validation with the trained model.
         """
-        from sklearn.model_selection import cross_validate as sk_cross_validate
-        from sklearn.base import BaseEstimator, ClassifierMixin
-
-        class ModelWrapper(BaseEstimator, ClassifierMixin):
-            """Wrapper to make a custom model compatible with sklearn's cross_validate"""
-
-            _estimator_type = (
-                "classifier"  # Class-level attribute for scikit-learn detection
-            )
-
-            def __init__(self, model_instance, best_params=None):
-                self.model_instance = model_instance
-                self.model = None
-                self.best_params = best_params
-                self.classes_ = np.array([0, 1])  # Required for classifier
-
-            def fit(self, X, y):
-                # Create a new XGBoost model for each fold
-                if XGBClassifier is None:
-                    raise ImportError("XGBoost not installed")
-
-                params = (
-                    self.best_params
-                    if self.best_params
-                    else {
-                        "n_estimators": 1000,
-                        "learning_rate": 0.02,
-                        "max_depth": 4,
-                        "min_child_weight": 1,
-                        "subsample": 0.8,
-                        "colsample_bytree": 0.8,
-                        "gamma": 0,
-                        "reg_lambda": 1,
-                        # class imbalance
-                        "scale_pos_weight": sum(y == 0) / max(sum(y == 1), 1),
-                        "objective": "binary:logistic",
-                        "eval_metric": "aucpr",
-                        "tree_method": "hist",
-                        "device": "cuda",
-                    }
-                )
-
-                # Create a new model for each fold
-                self.model = XGBClassifier(
-                    **params, random_state=42, use_label_encoder=False
-                )
-                self.model.fit(X, y)
-                return self
-
-            def predict(self, X):
-                return self.model.predict(X)
-
-            def predict_proba(self, X):
-                return self.model.predict_proba(X)
-
-            def get_params(self, deep=True):
-                return {
-                    "model_instance": self.model_instance,
-                    "best_params": self.best_params,
-                }
-
-            def set_params(self, **parameters):
-                for parameter, value in parameters.items():
-                    setattr(self, parameter, value)
-                return self
-
         print("Performing cross-validation...")
         print(f"Performing {cv}-fold cross-validation...")
 
@@ -233,34 +166,75 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
 
         if scoring is None:
             scoring = ["accuracy", "precision", "recall", "f1", "roc_auc"]
+        cv_splitter = StratifiedKFold(n_splits=cv, shuffle=True, random_state=42)
+        cv_results = {f"test_{metric}": [] for metric in scoring}
+        cv_results["fit_time"] = []
+        cv_results["score_time"] = []
 
-        # Create a fresh instance for cross-validation
-        wrapped_model = ModelWrapper(self, self.best_params)
+        for train_idx, val_idx in cv_splitter.split(X, y):
+            X_train_cv, X_val_cv = X[train_idx], X[val_idx]
+            y_train_cv, y_val_cv = y[train_idx], y[val_idx]
 
-        try:
-            cv_results = sk_cross_validate(
-                wrapped_model, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs
+            params = (
+                coerce_xgboost_params(self.best_params)
+                if self.best_params
+                else {
+                    "n_estimators": 1000,
+                    "learning_rate": 0.02,
+                    "max_depth": 4,
+                    "min_child_weight": 1,
+                    "subsample": 0.8,
+                    "colsample_bytree": 0.8,
+                    "gamma": 0,
+                    "reg_lambda": 1,
+                    "scale_pos_weight": sum(y_train_cv == 0) / max(sum(y_train_cv == 1), 1),
+                    "objective": "binary:logistic",
+                    "eval_metric": "aucpr",
+                    "tree_method": "hist",
+                    "device": "cuda",
+                }
             )
+            if n_jobs is not None:
+                params.setdefault("n_jobs", n_jobs)
 
-            # Process results
+            fold_model = XGBClassifier(**params, random_state=42)
+            fit_start = time.time()
+            fold_model.fit(X_train_cv, y_train_cv)
+            cv_results["fit_time"].append(time.time() - fit_start)
+
+            score_start = time.time()
+            y_pred = fold_model.predict(X_val_cv)
+            y_pred_proba = fold_model.predict_proba(X_val_cv)[:, 1]
+            cv_results["score_time"].append(time.time() - score_start)
+
+            fold_scores = {
+                "accuracy": accuracy_score(y_val_cv, y_pred),
+                "precision": precision_score(y_val_cv, y_pred, zero_division=0),
+                "recall": recall_score(y_val_cv, y_pred, zero_division=0),
+                "f1": f1_score(y_val_cv, y_pred, zero_division=0),
+                "roc_auc": roc_auc_score(y_val_cv, y_pred_proba)
+                if len(np.unique(y_val_cv)) == 2
+                else float("nan"),
+            }
             for metric in scoring:
-                score_key = f"test_{metric}"
-                if score_key in cv_results:
-                    scores = cv_results[score_key]
-                    mean_score = (
-                        np.mean(scores[~np.isnan(scores)])
-                        if np.any(~np.isnan(scores))
-                        else float("nan")
-                    )
-                    std_score = (
-                        np.std(scores[~np.isnan(scores)])
-                        if np.any(~np.isnan(scores))
-                        else float("nan")
-                    )
-                    print(f"{metric}: {mean_score:.4f} +/- {std_score:.4f}")
-        except Exception as e:
-            print(f"Cross-validation error: {e}")
-            cv_results = {}
+                cv_results[f"test_{metric}"].append(fold_scores[metric])
+
+        for key, scores in cv_results.items():
+            cv_results[key] = np.array(scores)
+
+        for metric in scoring:
+            scores = cv_results[f"test_{metric}"]
+            mean_score = (
+                np.mean(scores[~np.isnan(scores)])
+                if np.any(~np.isnan(scores))
+                else float("nan")
+            )
+            std_score = (
+                np.std(scores[~np.isnan(scores)])
+                if np.any(~np.isnan(scores))
+                else float("nan")
+            )
+            print(f"{metric}: {mean_score:.4f} +/- {std_score:.4f}")
 
         return cv_results
 
@@ -294,7 +268,6 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         # Set early_stopping_rounds in constructor instead of fit method
         self.model = XGBClassifier(
             random_state=42,
-            use_label_encoder=False,
             early_stopping_rounds=early_stopping_rounds,
             **{k: v for k, v in params.items() if k != "eval_metric"},
             eval_metric=params.get("eval_metric", "logloss"),
@@ -383,7 +356,6 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
             # Create model with unique random seed
             model = XGBClassifier(
                 random_state=seed,
-                use_label_encoder=False,
                 eval_metric=eval_metric,  # Pass eval_metric separately
                 **params  # Unpack remaining parameters
             )

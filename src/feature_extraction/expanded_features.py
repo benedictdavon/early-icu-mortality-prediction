@@ -1,4 +1,4 @@
-"""Opt-in Phase 3 expanded first-6-hour feature extraction."""
+"""Opt-in expanded first-6-hour feature extraction."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import yaml
 from features import (
     build_hourly_time_bin_features,
     compute_clinical_interaction_features,
+    compute_instability_features,
     compute_measurement_process_features,
     compute_organ_dysfunction_features,
     compute_trajectory_features,
@@ -19,7 +20,7 @@ from features import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PHASE3_CONFIG = PROJECT_ROOT / "configs" / "features_expanded.yaml"
+DEFAULT_EXPANDED_FEATURE_CONFIG = PROJECT_ROOT / "configs" / "features_expanded.yaml"
 
 VITAL_ITEMIDS = {
     "heart_rate": [220045],
@@ -51,9 +52,9 @@ LAB_ITEMIDS = {
 }
 
 
-def load_phase3_feature_config(config_path=None) -> dict:
-    """Load the Phase 3 feature config if present."""
-    path = Path(config_path) if config_path else DEFAULT_PHASE3_CONFIG
+def load_expanded_feature_config(config_path=None) -> dict:
+    """Load the expanded feature config if present."""
+    path = Path(config_path) if config_path else DEFAULT_EXPANDED_FEATURE_CONFIG
     if not path.exists():
         return {}
     with path.open("r", encoding="utf-8") as f:
@@ -61,15 +62,15 @@ def load_phase3_feature_config(config_path=None) -> dict:
     return loaded
 
 
-def phase3_features_enabled(config: dict | None, override: bool | None = None) -> bool:
-    """Resolve the Phase 3 on/off flag from CLI override and config."""
+def expanded_features_enabled(config: dict | None, override: bool | None = None) -> bool:
+    """Resolve the expanded-feature on/off flag from CLI override and config."""
     if override is not None:
         return bool(override)
     feature_engineering = (config or {}).get("feature_engineering", {})
     return bool(
         feature_engineering.get(
             "enabled",
-            feature_engineering.get("phase3_enabled", False),
+            False,
         )
     )
 
@@ -143,12 +144,12 @@ def _lab_events_from_hospital_path(
     return events[["stay_id", "charttime", "variable", "source", "valuenum"]]
 
 
-def build_phase3_long_events(
+def build_expanded_long_events(
     cohort: pd.DataFrame,
     chart_data: pd.DataFrame,
     hospital_path: str,
 ) -> pd.DataFrame:
-    """Build long-form vital/lab events for Phase 3 first-window features."""
+    """Build long-form vital/lab events for expanded first-window features."""
     vital_events = _vital_events_from_chart_data(chart_data, cohort)
     lab_events = _lab_events_from_hospital_path(cohort, hospital_path)
     events = pd.concat([vital_events, lab_events], ignore_index=True)
@@ -174,9 +175,9 @@ def extract_expanded_event_features(
     hospital_path: str,
     config: dict | None = None,
 ) -> pd.DataFrame:
-    """Extract opt-in Phase 3 event-derived first-6-hour features."""
+    """Extract opt-in event-derived first-6-hour features."""
     result = cohort[["stay_id"]].drop_duplicates().copy()
-    events = build_phase3_long_events(cohort, chart_data, hospital_path)
+    events = build_expanded_long_events(cohort, chart_data, hospital_path)
     if events.empty:
         return result
 
@@ -200,16 +201,22 @@ def extract_expanded_event_features(
         trajectory = compute_trajectory_features(events, cohort)
         result = result.merge(trajectory, on="stay_id", how="left")
 
+    if _group_enabled(config, "instability"):
+        instability = compute_instability_features(events, cohort)
+        result = result.merge(instability, on="stay_id", how="left")
+
     if _group_enabled(config, "measurement_process"):
+        expected_variables = sorted(set(VITAL_ITEMIDS) | set(LAB_ITEMIDS))
         measurement = compute_measurement_process_features(
             events,
             cohort,
             source_col="source",
+            expected_variables=expected_variables,
         )
         result = result.merge(measurement, on="stay_id", how="left")
 
     new_features = [col for col in result.columns if col != "stay_id"]
-    _validate_new_features(new_features, "Phase 3 event extraction")
+    _validate_new_features(new_features, "expanded event extraction")
     return result
 
 
@@ -217,7 +224,7 @@ def add_expanded_derived_features(
     features: pd.DataFrame,
     config: dict | None = None,
 ) -> pd.DataFrame:
-    """Add opt-in Phase 3 derived proxy and interaction features."""
+    """Add opt-in derived proxy and interaction features."""
     result = features.copy()
     before_cols = set(result.columns)
 
@@ -228,5 +235,5 @@ def add_expanded_derived_features(
         result = compute_clinical_interaction_features(result)
 
     new_features = sorted(set(result.columns) - before_cols)
-    _validate_new_features(new_features, "Phase 3 derived feature extraction")
+    _validate_new_features(new_features, "expanded derived feature extraction")
     return result

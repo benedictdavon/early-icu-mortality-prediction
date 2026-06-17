@@ -1,0 +1,17 @@
+model:
+  name: ebm
+  enabled: true
+  params:
+    interactions: 10
+    learning_rate: 0.01
+    max_rounds: 5000
+    n_jobs: -1
+  search:
+    enabled: false
+    scoring: average_precision
+    cv: 3
+    n_iter: 8
+    param_distributions:
+      interactions: [0, 5, 10, 20]
+      learning_rate: [0.005, 0.01, 0.02]
+      max_rounds: [1000, 2500, 5000]

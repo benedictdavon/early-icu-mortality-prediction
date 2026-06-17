@@ -23,6 +23,12 @@ def _linear_slope(hours: pd.Series, values: pd.Series) -> float:
     return float(np.polyfit(x[valid], y[valid], 1)[0])
 
 
+def _movement_flags(percent_change: float, threshold: float = 0.10) -> tuple[int, int]:
+    if pd.isna(percent_change):
+        return 0, 0
+    return int(percent_change >= threshold), int(percent_change <= -threshold)
+
+
 def compute_trajectory_features(
     events: pd.DataFrame,
     cohort: pd.DataFrame,
@@ -80,6 +86,9 @@ def compute_trajectory_features(
             else np.nan
         )
         row[f"{variable}_slope_0_6h"] = _linear_slope(hours, values)
+        deterioration, recovery = _movement_flags(row[f"{variable}_percent_change"])
+        row[f"{variable}_deterioration_flag"] = deterioration
+        row[f"{variable}_recovery_flag"] = recovery
 
     features = pd.DataFrame.from_dict(feature_rows, orient="index")
     features.index.name = id_col

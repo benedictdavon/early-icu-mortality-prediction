@@ -23,6 +23,7 @@ from data.splitting import make_train_valid_test_split
 from evaluation.metrics import binary_classification_metrics
 from evaluation.plots import (
     evaluation_plot_paths,
+    save_calibration_curve,
     save_confusion_matrix,
     save_precision_recall_curve,
     save_roc_curve,
@@ -30,6 +31,14 @@ from evaluation.plots import (
 from evaluation.reporting import evaluate_validation_and_test, save_aggregate_report
 from evaluation.thresholds import select_optimal_threshold
 from models.base.persistence import load_model_bundle, save_model_bundle
+
+
+def _simple_imputer(strategy):
+    try:
+        return SimpleImputer(strategy=strategy, keep_empty_features=True)
+    except TypeError:
+        return SimpleImputer(strategy=strategy)
+
 
 class ICUMortalityBaseModel:
     """
@@ -150,7 +159,7 @@ class ICUMortalityBaseModel:
         y_test = y.iloc[split_indices['test']]
         
         # Handle missing values
-        imputer = SimpleImputer(strategy='median')
+        imputer = _simple_imputer(strategy='median')
         X_train = imputer.fit_transform(X_train)
         X_val = imputer.transform(X_val)
         X_test = imputer.transform(X_test)
@@ -254,6 +263,12 @@ class ICUMortalityBaseModel:
             y_pred_proba,
             plot_paths["precision_recall_curve"],
             title=f"{self.model_name} Precision-Recall Curve",
+        )
+        save_calibration_curve(
+            self.y_test,
+            y_pred_proba,
+            plot_paths["calibration_curve"],
+            title=f"{self.model_name} Calibration Curve",
         )
         
         # Save as JSON

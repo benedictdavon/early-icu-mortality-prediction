@@ -1,0 +1,16 @@
+model:
+  name: logistic
+  enabled: true
+  params:
+    C: 1.0
+    solver: lbfgs
+    class_weight: balanced
+    max_iter: 2000
+  search:
+    enabled: false
+    scoring: average_precision
+    cv: 3
+    n_iter: 8
+    param_distributions:
+      model__C: [0.01, 0.1, 1.0, 10.0]
+      model__class_weight: [balanced, null]

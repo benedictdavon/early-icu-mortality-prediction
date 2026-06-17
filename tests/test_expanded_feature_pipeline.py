@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from feature_extraction.phase3_expanded import (
+from feature_extraction.expanded_features import (
     add_expanded_derived_features,
-    build_phase3_long_events,
+    build_expanded_long_events,
+    expanded_features_enabled,
     extract_expanded_event_features,
-    phase3_features_enabled,
 )
 
 
@@ -62,20 +62,20 @@ def _write_lab_data(tmp_path):
     return hosp_path
 
 
-def test_phase3_enabled_uses_override_before_config():
-    assert phase3_features_enabled({"feature_engineering": {"enabled": False}}, True)
-    assert not phase3_features_enabled(
+def test_expanded_features_enabled_uses_override_before_config():
+    assert expanded_features_enabled({"feature_engineering": {"enabled": False}}, True)
+    assert not expanded_features_enabled(
         {"feature_engineering": {"enabled": True}},
         False,
     )
-    assert phase3_features_enabled({"feature_engineering": {"enabled": True}})
-    assert not phase3_features_enabled({"feature_engineering": {"enabled": False}})
+    assert expanded_features_enabled({"feature_engineering": {"enabled": True}})
+    assert not expanded_features_enabled({"feature_engineering": {"enabled": False}})
 
 
-def test_phase3_long_events_convert_raw_mimic_rows(tmp_path):
+def test_expanded_feature_events_convert_raw_mimic_rows(tmp_path):
     hosp_path = _write_lab_data(tmp_path)
 
-    events = build_phase3_long_events(_cohort(), _chart_data(), str(hosp_path))
+    events = build_expanded_long_events(_cohort(), _chart_data(), str(hosp_path))
 
     assert {"stay_id", "charttime", "variable", "source", "valuenum"}.issubset(
         events.columns
@@ -84,7 +84,7 @@ def test_phase3_long_events_convert_raw_mimic_rows(tmp_path):
     assert set(events["source"]) == {"vital", "lab"}
 
 
-def test_phase3_event_features_are_first_6h_only(tmp_path):
+def test_expanded_event_features_are_first_6h_only(tmp_path):
     hosp_path = _write_lab_data(tmp_path)
 
     result = extract_expanded_event_features(
@@ -107,7 +107,7 @@ def test_phase3_event_features_are_first_6h_only(tmp_path):
     assert stay_2["lactate_measurement_count_0_6h"] == 1
 
 
-def test_phase3_derived_features_validate_provenance():
+def test_expanded_derived_features_validate_provenance():
     features = pd.DataFrame(
         {
             "stay_id": [1],

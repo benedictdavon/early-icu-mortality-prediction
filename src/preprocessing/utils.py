@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 
 def load_data(path):
@@ -11,11 +13,13 @@ def load_data(path):
 def save_processed_data(df, output_path):
     """Save the preprocessed dataframe"""
     print(f"Saving preprocessed data to {output_path}")
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     df.to_csv(output_path, index=False)
     print(f"Saved preprocessed data with shape {df.shape}")
 
 # preprocessing_report, visualizations
-import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt

@@ -1,4 +1,4 @@
-"""Run leakage-safe XGBoost ablations for baseline vs Phase 3 features.
+"""Run leakage-safe XGBoost ablations for baseline vs expanded features.
 
 The script expects preprocessed, patient-level CSVs to exist locally. Those
 files are restricted artifacts and are intentionally ignored by git.
@@ -24,7 +24,7 @@ from evaluation.reporting import results_dataframe
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Run baseline vs Phase 3 XGBoost ablations"
+        description="Run baseline vs expanded-feature XGBoost ablations"
     )
     parser.add_argument(
         "--baseline-data-path",
@@ -37,13 +37,13 @@ def parse_args():
             ROOT
             / "data"
             / "processed"
-            / "preprocessed_xgboost_phase3_features.csv"
+            / "preprocessed_xgboost_expanded_features.csv"
         ),
-        help="Phase 3 expanded preprocessed XGBoost CSV",
+        help="Expanded-feature preprocessed XGBoost CSV",
     )
     parser.add_argument(
         "--output-dir",
-        default=str(ROOT / "results" / "xgboost_phase3_ablation"),
+        default=str(ROOT / "results" / "xgboost_expanded_ablation"),
         help="Directory for aggregate ablation outputs",
     )
     parser.add_argument(
@@ -137,7 +137,7 @@ def main(args=None):
     params = _xgboost_params(args)
     runs = [
         ("baseline", baseline_path),
-        ("phase3_expanded", expanded_path),
+        ("expanded_features", expanded_path),
     ]
 
     metadata = []

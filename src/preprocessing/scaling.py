@@ -3,15 +3,17 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import RobustScaler
 
+DEFAULT_EXCLUDED_COLUMNS = {"subject_id", "hadm_id", "stay_id", "mortality", "target", "label"}
+
+
+def _excluded_columns(excluded_cols=None) -> set:
+    return DEFAULT_EXCLUDED_COLUMNS | set(excluded_cols or [])
+
+
 def verify_feature_scaling(df, excluded_cols=None):
     """Verify and fix feature scaling issues"""
     print("Verifying feature scaling...")
-    
-    if excluded_cols is None:
-        excluded_cols = []
-    
-    # Add standard excluded columns
-    excluded_cols.extend(['subject_id', 'hadm_id', 'stay_id'])
+    excluded_cols = _excluded_columns(excluded_cols)
     
     # Identify numeric columns that should be scaled
     numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -48,15 +50,17 @@ def verify_feature_scaling(df, excluded_cols=None):
     return df
 
 
-def standardize_features(df):
+def standardize_features(df, excluded_cols=None):
     """Standardize numeric features"""
     print("Standardizing numeric features...")
     
     processed_df = df.copy()
+    excluded_cols = _excluded_columns(excluded_cols)
     
     # Identify numeric features to standardize (exclude binary/categorical)
     numeric_features = [col for col in processed_df.select_dtypes(include=[np.number]).columns 
                       if not (col.startswith('has_') or col.endswith('_missing') or
+                             col in excluded_cols or
                              col in ['gender_numeric', 'sirs_criteria_count'])]
     
     # Use RobustScaler which is less sensitive to outliers

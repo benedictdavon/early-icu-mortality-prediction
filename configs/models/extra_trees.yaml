@@ -1,0 +1,22 @@
+model:
+  name: extra_trees
+  enabled: true
+  params:
+    n_estimators: 300
+    max_depth:
+    min_samples_split: 5
+    min_samples_leaf: 2
+    max_features: sqrt
+    class_weight: balanced
+    n_jobs: -1
+  search:
+    enabled: false
+    scoring: average_precision
+    cv: 3
+    n_iter: 12
+    param_distributions:
+      n_estimators: [100, 200, 300]
+      max_depth: [4, 8, 12, null]
+      min_samples_leaf: [1, 2, 4, 8]
+      max_features: [sqrt, log2, 0.5]
+      class_weight: [balanced, null]

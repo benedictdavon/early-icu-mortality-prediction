@@ -230,7 +230,6 @@ def model_based_feature_selection(df, target_col, model_type='xgboost', k=50, ma
         model = XGBClassifier(
             n_estimators=100, 
             learning_rate=0.1, 
-            use_label_encoder=False, 
             eval_metric='logloss',
             random_state=42
         )
@@ -247,7 +246,6 @@ def model_based_feature_selection(df, target_col, model_type='xgboost', k=50, ma
                 "XGBoost feature selection requires xgboost. Install requirements.txt first."
             )
         model = XGBClassifier(
-            use_label_encoder=False, 
             eval_metric='logloss',
             random_state=42
         )

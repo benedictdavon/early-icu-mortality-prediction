@@ -78,7 +78,7 @@ def binary_classification_metrics(y_true, y_score, threshold: float = 0.5) -> di
     return {
         **metrics,
         "f1_score": metrics["f1"],
-        # Historical code used `auc_pr`; the canonical Phase 1 metric is
+        # Historical code used `auc_pr`; the canonical metric is
         # average precision, which is more stable for imbalanced outcomes.
         "auc_pr": metrics["average_precision"],
         "confusion_matrix": [

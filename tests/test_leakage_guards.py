@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from data.schema import assert_no_leakage_columns, build_feature_matrix
+from tools.check_leakage import prepare_model_matrix
 
 
 def test_target_ids_and_obvious_leakage_columns_are_removed():
@@ -84,3 +85,19 @@ def test_model_loader_fits_imputer_on_training_only(monkeypatch, tmp_path):
     assert TrackingImputer.transform_shapes[1][0] == len(model.split_indices["test"])
     assert "duration_hours" not in model.feature_names
     assert "mortality" not in model.feature_names
+
+
+def test_leakage_probe_matrix_encodes_categorical_features():
+    df = pd.DataFrame(
+        {
+            "age_group": ["elderly", "adult", None],
+            "age": [80.0, np.nan, 55.0],
+            "all_missing": [np.nan, np.nan, np.nan],
+        }
+    )
+
+    X = prepare_model_matrix(df)
+
+    assert X.isna().sum().sum() == 0
+    assert "age_group_elderly" in X.columns
+    assert "age_group_nan" in X.columns

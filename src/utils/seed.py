@@ -23,3 +23,25 @@ def set_global_seed(seed: int = 42) -> int:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
     return seed
+
+
+def backend_seed_params(seed: int = 42) -> dict[str, dict[str, int]]:
+    """Return deterministic seed parameters for supported model backends."""
+    return {
+        "sklearn": {"random_state": seed},
+        "xgboost": {"random_state": seed},
+        "lightgbm": {"random_state": seed},
+        "catboost": {"random_seed": seed},
+        "torch": {"seed": seed},
+    }
+
+
+def apply_backend_seed(
+    params: dict | None,
+    backend: str,
+    seed: int = 42,
+) -> dict:
+    """Copy params and add the backend-specific seed field when known."""
+    seeded = dict(params or {})
+    seeded.update(backend_seed_params(seed).get(backend.lower(), {}))
+    return seeded

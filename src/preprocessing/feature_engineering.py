@@ -299,17 +299,42 @@ def extract_temporal_features(df):
     
     result_df = df.copy()
     
-    # Identify potential timestamp columns
-    time_cols = [col for col in df.columns if any(term in col.lower() for term in 
-                ['time', 'date', 'day', 'hour', 'admission', 'discharge'])]
+    # Identify likely timestamp columns. Hourly measurement columns such as
+    # ``heart_rate_hour_0`` are numeric features, not timestamps.
+    timestamp_terms = [
+        'time',
+        'date',
+        'admission',
+        'discharge',
+        'admittime',
+        'dischtime',
+        'intime',
+        'outtime',
+        'charttime',
+        'storetime',
+    ]
+    time_cols = [
+        col
+        for col in df.columns
+        if any(term in col.lower() for term in timestamp_terms)
+    ]
     
     date_cols = []
     features_added = 0
     
     for col in time_cols:
+        if pd.api.types.is_numeric_dtype(result_df[col]):
+            print(f"  - Skipping numeric non-timestamp column {col}")
+            continue
+
         # Try to convert to datetime
         try:
-            result_df[col] = pd.to_datetime(result_df[col])
+            converted = pd.to_datetime(result_df[col], errors='coerce')
+            if converted.notna().sum() == 0:
+                print(f"  - Could not convert {col} to datetime: no valid datetime values")
+                continue
+
+            result_df[col] = converted
             date_cols.append(col)
             
             # Extract hour of day

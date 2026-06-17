@@ -33,6 +33,7 @@ and is not redistributed here.
 |   |-- data_preprocessing.py      # Imputation, outliers, feature engineering
 |   |-- main.py                    # Train/evaluate model families
 |   |-- evaluation/                # Shared metrics, plots, threshold selection
+|   |-- experiments/               # Model-suite and final-report entrypoints
 |   |-- feature_extraction/        # Modular feature extraction helpers
 |   |-- preprocessing/             # Modular preprocessing helpers
 |   `-- models/
@@ -43,7 +44,11 @@ and is not redistributed here.
 |-- tools/
 |   `-- check_leakage.py           # Lightweight processed-feature leakage checks
 |-- docs/
-|   `-- data_contract.md           # Expected restricted-data layout and columns
+|   |-- data_contract.md           # Expected restricted-data layout and columns
+|   |-- evaluation_protocol.md     # Split, threshold, and metric protocol
+|   |-- experiment_result_schema.md # Aggregate result fields
+|   |-- leakage_checklist.md       # Leakage controls for EHR modeling
+|   `-- final_deliverables.md      # Final assignment deliverable mapping
 |-- report/
 |   `-- REPORT.md                  # Course report and detailed methodology
 |-- figures/                       # Selected non-patient aggregate figures
@@ -99,15 +104,15 @@ python src/feature_extraction.py
 python src/data_preprocessing.py
 ```
 
-Phase 3 expanded tabular features are opt-in and write separate processed
+Expanded tabular features are opt-in and write separate processed
 artifacts:
 
 ```bash
-python src/feature_extraction.py --enable-phase3-features
+python src/feature_extraction.py --enable-expanded-features
 python src/data_preprocessing.py \
-  --input-path data/processed/extracted_features_phase3.csv \
+  --input-path data/processed/extracted_features_expanded.csv \
   --model-type xgboost \
-  --output-path data/processed/preprocessed_xgboost_phase3_features.csv
+  --output-path data/processed/preprocessed_xgboost_expanded_features.csv
 ```
 
 Training examples:
@@ -125,17 +130,44 @@ python src/main.py --model logistic_regression --no-tune --no-shap
 python src/main.py --model rf_bagging --no-tune --no-shap
 ```
 
-Leakage-safe baseline vs Phase 3 XGBoost ablation:
+Leakage-safe baseline vs expanded-feature XGBoost ablation:
 
 ```bash
 python tools/run_xgboost_ablation.py \
   --baseline-data-path data/processed/preprocessed_xgboost_features.csv \
-  --expanded-data-path data/processed/preprocessed_xgboost_phase3_features.csv
+  --expanded-data-path data/processed/preprocessed_xgboost_expanded_features.csv
 ```
 
 The ablation script uses validation data for early stopping and threshold-policy
 selection, then applies selected thresholds unchanged to the held-out test set.
 It saves aggregate reports only.
+
+Tabular model suite:
+
+```bash
+python src/experiments/run_model_suite.py \
+  --data-path data/processed/preprocessed_xgboost_expanded_features.csv \
+  --output-dir results/model_suite
+```
+
+The suite runs Logistic Regression, Random Forest, ExtraTrees, XGBoost,
+LightGBM, CatBoost, and EBM through a common interface when their dependencies
+are installed. Missing optional backends are recorded as skipped. Outputs are
+aggregate comparison tables and threshold-policy reports only; row-level
+predictions are not written.
+
+Final deliverable summary:
+
+```bash
+python src/experiments/generate_final_summary.py \
+  --model-suite-dir results/model_suite \
+  --output-path report/FINAL_SUMMARY.md
+```
+
+The final summary consumes aggregate model-suite outputs and produces a
+course-review summary covering TODO traceability, model-suite status, primary
+test metrics, threshold policies, feature provenance, safety notes, and final
+conclusions. See [`docs/final_deliverables.md`](docs/final_deliverables.md).
 
 Optional processed-feature leakage check:
 
