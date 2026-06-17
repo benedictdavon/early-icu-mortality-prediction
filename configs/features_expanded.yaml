@@ -1,0 +1,66 @@
+feature_engineering:
+  phase: 3
+  name: expanded_first_6h_tabular_features
+  status: available_as_tested_building_blocks
+
+observation_window:
+  start: icu_admission
+  end_hours: 6
+  inclusive_end: true
+  rule: include events with timestamp >= intime and <= intime + 6 hours
+
+long_event_inputs:
+  required_columns:
+    - stay_id
+    - charttime
+    - variable
+    - valuenum
+  optional_columns:
+    - source
+
+feature_groups:
+  hourly_time_bins:
+    enabled: true
+    bin_hours: 1
+    aggregations:
+      - mean
+      - min
+      - max
+      - last
+    include_observed_flags: true
+    include_counts: true
+
+  trajectory:
+    enabled: true
+    features:
+      - first
+      - last
+      - last_minus_first
+      - percent_change
+      - first_2h_mean
+      - last_2h_mean
+      - last2h_minus_first2h
+      - slope_0_6h
+
+  measurement_process:
+    enabled: true
+    features:
+      - measured_0_6h
+      - measurement_count_0_6h
+      - time_to_first_measurement
+      - time_since_last_measurement_at_6h
+      - total_measurements_0_6h
+
+  organ_dysfunction:
+    enabled: true
+    note: transparent first-window proxy flags, not exact SOFA scores
+
+  interactions:
+    enabled: true
+    scope: small clinically interpretable interaction set
+
+leakage_controls:
+  exclude_post_window_events: true
+  fit_preprocessing_on_train_only: true
+  validate_feature_names_with_provenance: true
+  disallow_outcome_or_identifier_features: true
