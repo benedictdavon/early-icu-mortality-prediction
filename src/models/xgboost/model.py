@@ -1,4 +1,3 @@
-# models/xg_boost.py
 import os, time, json, joblib, warnings, numpy as np, pandas as pd, matplotlib.pyplot as plt, seaborn as sns
 
 from xgboost import XGBClassifier
@@ -19,13 +18,14 @@ from sklearn.metrics import (
 )
 from sklearn.inspection import permutation_importance
 
-# Add parent directory so "from models.base_model import ..." works
-from pathlib import Path, PurePath
-import sys
-
-sys.path.append(str(PurePath(__file__).parent.parent))
-
-from models.base_model import ICUMortalityBaseModel  # ← your shared superclass
+from models.base.model import ICUMortalityBaseModel
+from models.xgboost.ensemble import DEFAULT_ENSEMBLE_SEEDS, ENSEMBLE_THRESHOLDS
+from models.xgboost.tuning import (
+    coerce_xgboost_params,
+    xgboost_default_params,
+    xgboost_ensemble_default_params,
+    xgboost_search_space,
+)
 
 
 class ICUMortalityXGBoost(ICUMortalityBaseModel):
@@ -61,18 +61,7 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         neg = np.sum(self.y_train == 0)
         base_pos_w = neg / max(pos, 1)
 
-        param_dist = {
-            # Settings based on the paper
-            "n_estimators": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
-            "learning_rate": [0.01, 0.05, 0.07, 0.1, 0.2, 0.5, 1, 7],
-            "max_depth": [3, 5, 7, 9],
-            "min_child_weight": [1, 3, 5],
-            "subsample": [0.6, 0.7, 0.8, 0.9, 1.0],
-            "colsample_bytree": [0.6, 0.7, 0.8, 0.9, 1.0],
-            "gamma": [0, 0.1, 0.2, 0.3],
-            "reg_lambda": [1, 2, 5, 10],  # L2 regularisation
-            "scale_pos_weight": [base_pos_w * f for f in (0.5, 1, 2, 4)],
-        }
+        param_dist = xgboost_search_space(base_pos_w)
 
         # Using partial fit approach instead of RandomizedSearchCV
         # to avoid sklearn compatibility issues
@@ -263,7 +252,7 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
                         if np.any(~np.isnan(scores))
                         else float("nan")
                     )
-                    print(f"{metric}: {mean_score:.4f} ± {std_score:.4f}")
+                    print(f"{metric}: {mean_score:.4f} +/- {std_score:.4f}")
         except Exception as e:
             print(f"Cross-validation error: {e}")
             cv_results = {}
@@ -286,21 +275,7 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
             params = (
                 self.best_params
                 if self.best_params
-                else {
-                    "n_estimators": 1000,
-                    "learning_rate": 0.01,
-                    "max_depth": 5,
-                    "min_child_weight": 3,  
-                    "subsample": 0.8,
-                    "colsample_bytree": 0.8,
-                    "gamma": 0.2,
-                    "reg_lambda": 5,
-                    "scale_pos_weight": 1.9,  
-                    "objective": "binary:logistic",
-                    "tree_method": "hist", 
-                    "device": "cuda",  
-                    "eval_metric": "aucpr",  
-                }
+                else xgboost_default_params()
             )
 
 
@@ -335,7 +310,7 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         )
         self.train_time = time.time() - t0
         print(
-            f"Training done in {self.train_time:.1f} s — best iter = {self.model.best_iteration}"
+            f"Training done in {self.train_time:.1f} s - best iter = {self.model.best_iteration}"
         )
 
         # Store feature importances with length check
@@ -372,10 +347,13 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
 
         return self.model
 
-    def train_ensemble(self, seeds=[42, 123, 2021, 777, 888]):
+    def train_ensemble(self, seeds=None):
         """
         Train an ensemble of XGBoost models with different random seeds
         """
+        if seeds is None:
+            seeds = DEFAULT_ENSEMBLE_SEEDS
+
         if self.X_train_smote is None or self.y_train_smote is None:
             raise ValueError("Apply SMOTE first by calling apply_smote() method")
         
@@ -383,43 +361,10 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         
         # Use best params if available, otherwise use defaults
         if self.best_params:
-            params = self.best_params.copy()
-            # Convert string values to appropriate types if needed
-            if 'n_estimators' in params:
-                params['n_estimators'] = int(params['n_estimators'])
-            if 'learning_rate' in params:
-                params['learning_rate'] = float(params['learning_rate'])
-            if 'max_depth' in params:
-                params['max_depth'] = int(params['max_depth'])
-            if 'min_child_weight' in params:
-                params['min_child_weight'] = int(params['min_child_weight'])
-            if 'subsample' in params:
-                params['subsample'] = float(params['subsample'])
-            if 'colsample_bytree' in params:
-                params['colsample_bytree'] = float(params['colsample_bytree'])
-            if 'gamma' in params:
-                params['gamma'] = float(params['gamma'])
-            if 'reg_lambda' in params:
-                params['reg_lambda'] = float(params['reg_lambda'])
-            if 'scale_pos_weight' in params:
-                params['scale_pos_weight'] = float(params['scale_pos_weight'])
+            params = coerce_xgboost_params(self.best_params)
         else:
-            params = {
-                "n_estimators": 600,
-                "learning_rate": 0.01,
-                "max_depth": 7,
-                "min_child_weight": 1,
-                "subsample": 0.6,
-                "colsample_bytree": 0.6,
-                "gamma": 0.2,
-                "reg_lambda": 1,
-                "scale_pos_weight": sum(self.y_train == 0) / max(sum(self.y_train == 1), 1),
-                "objective": "binary:logistic",
-                "eval_metric": "logloss",
-                "verbosity": 0,
-                "tree_method": "hist",
-                "device": "cuda"
-            }
+            scale_pos_weight = sum(self.y_train == 0) / max(sum(self.y_train == 1), 1)
+            params = xgboost_ensemble_default_params(scale_pos_weight)
         
         # Remove eval_metric from params to avoid duplicate keyword argument
         eval_metric = params.pop("eval_metric", "logloss")
@@ -741,23 +686,27 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         if self.model is None:
             raise ValueError("You must train the model first")
 
-        print("Evaluating model with threshold optimization...")
+        print("Selecting threshold on validation data, then evaluating on test data...")
 
-        # Get probability predictions
-        y_pred_proba = self.predict_proba(self.X_test)
+        if self.X_val is None or self.y_val is None:
+            raise ValueError("Validation data is required for threshold optimization")
+
+        # Select the threshold on validation data only. Test data is used once
+        # below for final metrics with the selected threshold.
+        val_pred_proba = self.predict_proba(self.X_val)
 
         # Try different thresholds to find the optimal one
         thresholds = np.linspace(0.1, 0.9, 17)
         results = []
 
         for threshold in thresholds:
-            y_pred = (y_pred_proba >= threshold).astype(int)
+            y_pred = (val_pred_proba >= threshold).astype(int)
 
-            # Calculate metrics at this threshold
-            accuracy = accuracy_score(self.y_test, y_pred)
-            precision = precision_score(self.y_test, y_pred, zero_division=0)
-            recall = recall_score(self.y_test, y_pred)
-            f1 = f1_score(self.y_test, y_pred)
+            # Calculate validation metrics at this threshold.
+            accuracy = accuracy_score(self.y_val, y_pred)
+            precision = precision_score(self.y_val, y_pred, zero_division=0)
+            recall = recall_score(self.y_val, y_pred)
+            f1 = f1_score(self.y_val, y_pred)
 
             # Clinical utility score - prioritizing recall over precision
             # Higher weight on recall = fewer missed mortality cases
@@ -796,17 +745,25 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
 
         print(f"Optimal threshold: {optimal_threshold:.2f} (optimized for {metric})")
         print(
-            f"At optimal threshold - Precision: {results_df.loc[best_idx, 'precision']:.4f}, "
+            f"Validation at optimal threshold - Precision: {results_df.loc[best_idx, 'precision']:.4f}, "
             f"Recall: {results_df.loc[best_idx, 'recall']:.4f}, "
             f"F1: {results_df.loc[best_idx, 'f1']:.4f}"
         )
 
-        # Calculate AUC-ROC and AUC-PR
-        auroc = roc_auc_score(self.y_test, y_pred_proba)
+        # Evaluate final performance on held-out test data with the selected threshold.
+        test_pred_proba = self.predict_proba(self.X_test)
+        y_pred_optimal = (test_pred_proba >= optimal_threshold).astype(int)
+
+        test_accuracy = accuracy_score(self.y_test, y_pred_optimal)
+        test_precision = precision_score(self.y_test, y_pred_optimal, zero_division=0)
+        test_recall = recall_score(self.y_test, y_pred_optimal)
+        test_f1 = f1_score(self.y_test, y_pred_optimal)
+
+        auroc = roc_auc_score(self.y_test, test_pred_proba)
 
         # Calculate precision-recall curve and AUC
         precision_vals, recall_vals, _ = precision_recall_curve(
-            self.y_test, y_pred_proba
+            self.y_test, test_pred_proba
         )
         auc_pr = auc(recall_vals, precision_vals)
 
@@ -816,11 +773,8 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         # Create visualization plots
         self._plot_threshold_optimization(results_df, optimal_threshold)
         self._plot_precision_recall_tradeoff(results_df, optimal_threshold)
-        self._plot_roc_curve(self.y_pred, y_pred_proba)
-        self._plot_pr_curve(self.y_pred, y_pred_proba)
-
-        # Get predictions with optimal threshold
-        y_pred_optimal = (y_pred_proba >= optimal_threshold).astype(int)
+        self._plot_roc_curve(self.y_test, test_pred_proba)
+        self._plot_pr_curve(self.y_test, test_pred_proba)
 
         # Print detailed classification report with optimal threshold
         print("\nClassification Report (optimal threshold):")
@@ -835,16 +789,17 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
         # Create evaluation results dict with default Python types
         evaluation_results = {
             "model": self.model_name,
-            "accuracy": float(best_result["accuracy"]),
-            "precision": float(best_result["precision"]),
-            "recall": float(best_result["recall"]),
-            "f1_score": float(best_result["f1"]),
+            "accuracy": float(test_accuracy),
+            "precision": float(test_precision),
+            "recall": float(test_recall),
+            "f1_score": float(test_f1),
             "auc_roc": float(auroc),
             "auc_pr": float(auc_pr),
             "threshold": {
                 "default": 0.5,
                 "optimal": float(optimal_threshold),
                 "optimization_metric": metric,
+                "selected_on": "validation",
             },
             "train_time": (
                 float(self.train_time) if hasattr(self, "train_time") else None
@@ -1303,13 +1258,7 @@ class ICUMortalityXGBoost(ICUMortalityBaseModel):
             raise ValueError("Train ensemble first")
         
         # Define different thresholds to test
-        thresholds = {
-            'standard': 0.50,
-            'f1_optimized': 0.45,
-            'balanced': 0.30,
-            'high_sensitivity': 0.20,
-            'clinical_utility': 0.10
-        }
+        thresholds = ENSEMBLE_THRESHOLDS
         
         results = []
         

@@ -9,17 +9,18 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
 from sklearn.feature_selection import SelectFromModel
 from sklearn.inspection import permutation_importance
-import sys
 import time
-from pathlib import Path
 from datetime import datetime
 import joblib
 import warnings
 from sklearn.exceptions import ConvergenceWarning
 
-# Add parent directory to path
-sys.path.append(str(Path(__file__).parent.parent))
-from models.base_model import ICUMortalityBaseModel
+from models.base.model import ICUMortalityBaseModel
+from models.logistic_regression.interpretation import (
+    calculate_odds_ratios as calculate_odds_ratio_table,
+    save_coefficient_analysis,
+    save_odds_ratio_analysis,
+)
 
 # Filter specific warnings
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -424,7 +425,7 @@ class ICUMortalityLogisticRegression(ICUMortalityBaseModel):
             mean_score = cv_results[score_key].mean()
             std_score = cv_results[score_key].std()
             
-            print(f"CV {metric}: {mean_score:.4f} ± {std_score:.4f}")
+            print(f"CV {metric}: {mean_score:.4f} +/- {std_score:.4f}")
             
             results_dict[metric] = {
                 'mean': float(mean_score),
@@ -533,75 +534,14 @@ class ICUMortalityLogisticRegression(ICUMortalityBaseModel):
         """Visualize model coefficients"""
         if self.coef_df is None:
             raise ValueError("Model must be trained first")
-            
-        # Plot top 20 coefficients
-        plt.figure(figsize=(12, 10))
-        
-        # Sort by absolute coefficient but keep sign for coloring
-        top_coef = self.coef_df.sort_values('abs_coefficient', ascending=False).head(20)
-        
-        # Create color map based on coefficient sign
-        colors = ['red' if x < 0 else 'green' for x in top_coef['coefficient']]
-        
-        # Plot horizontal bar chart
-        bars = plt.barh(top_coef['feature'], top_coef['coefficient'], color=colors)
-        
-        # Add vertical line at x=0
-        plt.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
-        
-        # Label the plot
-        plt.xlabel('Coefficient Value')
-        plt.title(f'{self.model_name} Top 20 Feature Coefficients')
-        plt.grid(axis='x', linestyle='--', alpha=0.7)
-        
-        # Add a legend
-        from matplotlib.patches import Patch
-        legend_elements = [
-            Patch(facecolor='green', label='Increases mortality risk'),
-            Patch(facecolor='red', label='Decreases mortality risk')
-        ]
-        plt.legend(handles=legend_elements)
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, 'coefficient_analysis.png'), dpi=300)
-        plt.close()
-        
-        # Save coefficients to CSV
-        self.coef_df.to_csv(os.path.join(self.output_dir, 'model_coefficients.csv'), index=False)
+        save_coefficient_analysis(self.coef_df, self.output_dir, self.model_name)
     
     def calculate_odds_ratios(self):
         """Calculate and visualize odds ratios for easier interpretation"""
         if self.coef_df is None:
             raise ValueError("Model must be trained first")
             
-        # Calculate odds ratios (e^coefficient)
-        odds_df = self.coef_df.copy()
-        odds_df['odds_ratio'] = np.exp(odds_df['coefficient'])
-        odds_df['percent_change'] = (odds_df['odds_ratio'] - 1) * 100
-        
-        # Sort by absolute percent change
-        odds_df['abs_percent_change'] = np.abs(odds_df['percent_change'])
-        odds_df = odds_df.sort_values('abs_percent_change', ascending=False)
-        
-        # Plot top 20 odds ratios
-        plt.figure(figsize=(12, 10))
-        
-        top_odds = odds_df.head(20).copy()
-        
-        # Use log scale for better visualization
-        plt.barh(top_odds['feature'], top_odds['percent_change'])
-        
-        # Add vertical line at 0% change
-        plt.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
-        
-        # Label the plot
-        plt.xlabel('Effect on Odds of Mortality (%)')
-        plt.title(f'{self.model_name} Feature Effects on Mortality Risk')
-        plt.grid(axis='x', linestyle='--', alpha=0.7)
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.output_dir, 'odds_ratio_analysis.png'), dpi=300)
-        plt.close()
+        odds_df = calculate_odds_ratio_table(self.coef_df)
         
         # Print and save top odds ratios
         print("\nTop 5 features increasing mortality risk:")
@@ -614,8 +554,7 @@ class ICUMortalityLogisticRegression(ICUMortalityBaseModel):
         for _, row in top_decrease.iterrows():
             print(f"  {row['feature']}: {row['percent_change']:.1f}% odds")
         
-        # Save odds ratios to CSV
-        odds_df.to_csv(os.path.join(self.output_dir, 'odds_ratios.csv'), index=False)
+        save_odds_ratio_analysis(odds_df, self.output_dir, self.model_name)
         
         return odds_df
     

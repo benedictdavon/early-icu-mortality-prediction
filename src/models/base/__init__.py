@@ -1,4 +1,4 @@
-"""Backward-compatible import path for the shared base model."""
+"""Shared model base classes and utilities."""
 
 from models.base.model import ICUMortalityBaseModel
 
