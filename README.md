@@ -1,154 +1,186 @@
-# ICU Mortality Prediction (AI Capstone 2025)
+# ICU Mortality Prediction
 
-Predicting in-hospital mortality using vital signs, lab results, and demographic data collected within the first 6 hours of ICU admission.  
-Final project for the **NYCU AI Capstone 2025** course, based on the **MIMIC-IV** dataset.
+Retrospective machine learning study for early in-hospital mortality prediction
+using ICU measurements from the first 6 hours of admission.
 
----
+This project was built for the NYCU AI in EHR / AI Capstone 2025 course and is
+based on a course-provided subset derived from MIMIC-IV.
 
-## 📌 Overview
+## Important Disclaimer
 
-This project develops machine learning models to predict ICU patient mortality using early-stage clinical data. The goal is to provide clinicians with reliable risk assessment tools to inform critical care decisions.
+This repository is for academic research and portfolio review only. It is not a
+clinical decision-support system and should not be used for triage, treatment,
+alarm generation, or care decisions. MIMIC-IV data is credentialed health data
+and is not redistributed here.
 
-**Key Achievements:**
+## Project Summary
 
-- 🎯 **Best Performance**: XGBoost ensemble (AUC: 0.8465, F1: 0.5060)
-- 📊 **Dataset**: 16,922 ICU patients (20.87% mortality rate)
-- ⚡ **GPU Acceleration**: CUDA-optimized XGBoost training
-- 🔬 **Clinical Focus**: Medical domain knowledge throughout pipeline
+- Task: binary classification of in-hospital mortality.
+- Observation window: first 6 hours after ICU admission.
+- Cohort used in the original experiment: 16,922 ICU patients.
+- Mortality rate in the original experiment: 20.87%.
+- Best reported discrimination: XGBoost ensemble AUC-ROC around 0.846.
+- Main focus: clinical feature engineering, missing-data handling, class
+  imbalance, model comparison, and threshold tradeoffs.
 
----
+## Repository Layout
 
-## 🚀 Quick Start
+```text
+.
+|-- src/
+|   |-- cohort_selection.py        # Build final ICU cohort
+|   |-- feature_extraction.py      # Extract demographics, vitals, labs, labels
+|   |-- data_preprocessing.py      # Imputation, outliers, feature engineering
+|   |-- main.py                    # Train/evaluate model families
+|   |-- evaluation/                # Shared metrics, plots, threshold selection
+|   |-- feature_extraction/        # Modular feature extraction helpers
+|   |-- preprocessing/             # Modular preprocessing helpers
+|   `-- models/
+|       |-- base/                  # Shared base model and persistence helpers
+|       |-- logistic_regression/   # Logistic regression model and interpretation
+|       |-- random_forest/         # Random forest and bagging variants
+|       `-- xgboost/               # XGBoost model, tuning, and ensemble helpers
+|-- tools/
+|   `-- check_leakage.py           # Lightweight processed-feature leakage checks
+|-- docs/
+|   `-- data_contract.md           # Expected restricted-data layout and columns
+|-- report/
+|   `-- REPORT.md                  # Course report and detailed methodology
+|-- figures/                       # Selected non-patient aggregate figures
+|-- MODEL_CARD.md                  # Intended use, limits, and safety notes
+|-- requirements.txt
+|-- environment.yml
+`-- README.md
+```
 
-### Installation
+## Data Access
+
+The code expects local MIMIC-IV-derived files. See
+[`docs/data_contract.md`](docs/data_contract.md) for the expected directory
+layout and processed CSV contract.
+
+By default, the pipeline reads from `data/`. To use another location:
+
+```powershell
+$env:ICU_DATA_DIR = "C:\path\to\icu-data"
+```
+
+Do not commit raw MIMIC files, processed patient-level CSVs, model artifacts, or
+row-level predictions.
+
+## Setup
+
+Minimal Python setup:
 
 ```bash
-# Clone repository
-git clone https://github.com/benedictdavon/early-icu-mortality-prediction
-cd early-icu-mortality-prediction
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-# Setup environment
+Conda setup from the original experiment environment:
+
+```bash
 conda env create -f environment.yml
-conda activate icu-mortality-prediction
+conda activate capstone_final_gpu
 ```
 
-### Run Models
+The exported Conda environment is Windows/GPU-oriented. For a fresh machine,
+prefer `requirements.txt` first, then install a CUDA-compatible XGBoost/PyTorch
+stack only if needed.
+
+## Pipeline
+
+The full pipeline requires local access to the restricted data:
 
 ```bash
-# Best performing model
-python src/main.py --model xgboost_ensemble --ensemble-size 7
-
-# Individual models
-python src/main.py --model xgboost --tune
-python src/main.py --model random_forest --tune
-python src/main.py --model logistic_regression --tune
+python src/cohort_selection.py
+python src/feature_extraction.py
+python src/data_preprocessing.py
 ```
 
----
-
-## 📈 Results Summary
-
-| Model                      | AUC        | Accuracy   | Precision  | Recall     | F1-Score   |
-| -------------------------- | ---------- | ---------- | ---------- | ---------- | ---------- |
-| **XGBoost Ensemble (n=7)** | **0.8465** | **82.98%** | **64.19%** | **41.64%** | **0.5052** |
-| XGBoost Single             | 0.8426     | 80.95%     | 53.70%     | 62.75%     | 0.5787     |
-| Random Forest              | 0.8145     | 79.00%     | 49.71%     | 60.91%     | 0.5474     |
-| Logistic Regression        | 0.7876     | 74.39%     | 42.44%     | 64.02%     | 0.5104     |
-
-**Clinical Thresholds:**
-
-- **Standard (0.50)**: High precision for avoiding false alarms
-- **F1-optimized (0.45)**: Best balance for general clinical use
-- **Balanced (0.30)**: Good for screening applications
-- **High-sensitivity (0.10)**: Maximum recall for critical care
-
----
-
-## 🏗️ Architecture
-
-```
-Data Pipeline: MIMIC-IV → Cohort Selection → Feature Extraction → Preprocessing → Models
-```
-
-**Key Components:**
-
-- **469 raw features** → **156 optimized features** (XGBoost)
-- **Advanced preprocessing**: MICE imputation, clinical outlier detection
-- **Model-specific optimization**: Tailored feature selection per algorithm
-- **Ensemble methodology**: 5-10 models with prediction averaging
-
----
-
-## 📂 Repository Structure
+Training examples:
 
 ```bash
-├── src/
-│   ├── main.py              # Model training & evaluation
-│   ├── models/              # XGBoost, Random Forest, Logistic Regression
-│   ├── preprocessing/       # Advanced data preprocessing modules
-│   └── feature_extraction/  # Clinical feature engineering
-├── data/processed/          # Model-ready datasets
-├── results/                 # Model outputs & visualizations
-├── notebooks/               # Analysis & exploration
-└── requirements.txt         # Dependencies
+# Fast smoke-style run if processed data already exists
+python src/main.py --model xgboost --no-tune --no-shap
+
+# XGBoost ensemble
+python src/main.py --model xgboost_ensemble --ensemble-size 7 --no-tune
+
+# Other model families
+python src/main.py --model random_forest --no-tune --no-shap
+python src/main.py --model logistic_regression --no-tune --no-shap
+python src/main.py --model rf_bagging --no-tune --no-shap
 ```
 
----
+Optional processed-feature leakage check:
 
-## 🔬 Key Features
+```bash
+python tools/check_leakage.py --data-path data/processed/preprocessed_xgboost_features.csv
+```
 
-**Clinical Integration:**
+## Evaluation Protocol
 
-- Medical domain knowledge in feature engineering
-- SIRS criteria, shock index, critical value detection
-- Multiple threshold strategies for different care scenarios
+The training code uses stratified train/validation/test splits. Thresholds are
+selected on validation data; the held-out test set is used for final reporting.
 
-**Technical Innovation:**
+Primary metrics:
 
-- GPU-accelerated XGBoost with ensemble methods
-- Advanced missing data handling (MICE, KNN imputation)
-- Comprehensive model interpretation (SHAP, permutation importance)
+- AUC-ROC
+- precision
+- recall
+- F1 score
+- specificity / NPV for threshold analysis
 
-**Robust Evaluation:**
+## Reported Results
 
-- 5-fold stratified cross-validation
-- Multiple threshold analysis for clinical utility
-- Feature importance analysis across all models
+Results from the original course experiment:
 
----
+| Model | AUC-ROC | Accuracy | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|---:|
+| Logistic regression | 0.7876 | 0.7439 | 0.4244 | 0.6402 | 0.5104 |
+| Random forest | 0.8145 | 0.7900 | 0.4971 | 0.6091 | 0.5474 |
+| XGBoost single | 0.8426 | 0.8095 | 0.5370 | 0.6275 | 0.5787 |
+| XGBoost ensemble | 0.8465 | 0.8298 | 0.6419 | 0.4164 | 0.5052 |
 
-## 👨‍🏫 Team & Course
+Interpret these as retrospective experimental metrics, not deployment
+performance. Re-running after code or threshold-protocol changes may produce
+different F1/threshold values.
 
-**Student:** Benedict Davon Martono 周恭麟 (110550201)  
-**Course:** AI in EHR – AI Capstone 2025, NYCU  
-**Instructor:** Prof. 王才沛
+## Methods
 
-**Original Group Collaboration:**
+Feature groups include:
 
-- Tymofii Voitekh 提姆西
-- Jorge Tyrakowski 狄豪飛
+- demographics
+- early vital-sign statistics and trends
+- lab summaries
+- missingness indicators
+- prior diagnosis summaries
+- clinically derived features such as shock index and SIRS criteria count
 
-_This repository reflects my personal implementation and exploration of the project._
+Model families include:
 
----
+- logistic regression
+- random forest
+- random forest bagging
+- XGBoost
+- XGBoost probability-averaging ensemble
 
-## 📖 Documentation
+## Course And Acknowledgment
 
-For detailed technical documentation, see [`REPORT.md`](report/REPORT.md):
+Course: AI in EHR / AI Capstone 2025, National Yang Ming Chiao Tung University.
 
-- Complete pipeline methodology
-- Comprehensive results analysis
-- Feature importance interpretations
-- Clinical implications and future work
+This repository reflects my personal implementation and exploration of a course
+final project originally conducted as a group assignment.
 
----
+## References
 
-## 📚 References
+- MIMIC-IV: https://mimic.mit.edu/
+- PhysioNet credentialed health data license: https://physionet.org/
+- Full reference list: [`report/REPORT.md`](report/REPORT.md)
 
-- MIMIC-IV Dataset: https://mimic.mit.edu/
-- Course Materials: Provided by NYCU
-- [Complete reference list in REPORT.md](report/REPORT.md#references)
+## License
 
----
-
-**License:** Academic use only | **Data:** MIMIC-IV (PhysioNet Credentialed Health Data License)
+Academic use only. Data access and use are governed by the MIMIC-IV / PhysioNet
+credentialed health data license.
