@@ -775,27 +775,27 @@ tests/test_subgroups.py
 
 ## Subgroups
 
-- [ ] Age: `<50`, `50-64`, `65-79`, `80+`
-- [ ] Sex
-- [ ] Major diagnosis group
-- [ ] Lactate measured vs not measured
-- [ ] High vs low missingness
-- [ ] Measurement intensity quartile
-- [ ] ICU unit type if available
-- [ ] Ventilation status if available
+- [x] Age: `<50`, `50-64`, `65-79`, `80+`
+- [x] Sex
+- [x] Major diagnosis group
+- [x] Lactate measured vs not measured
+- [x] High vs low missingness
+- [x] Measurement intensity quartile
+- [x] ICU unit type if available
+- [x] Ventilation status if available
 
 ## Metrics per subgroup
 
-- [ ] n
-- [ ] mortality rate
-- [ ] AUC-ROC
-- [ ] average precision
-- [ ] Brier score
-- [ ] calibration slope
-- [ ] calibration intercept
-- [ ] recall at screening threshold
-- [ ] precision at screening threshold
-- [ ] specificity at screening threshold
+- [x] n
+- [x] mortality rate
+- [x] AUC-ROC
+- [x] average precision
+- [x] Brier score
+- [x] calibration slope
+- [x] calibration intercept
+- [x] recall at screening threshold
+- [x] precision at screening threshold
+- [x] specificity at screening threshold
 
 ## Done criteria
 
