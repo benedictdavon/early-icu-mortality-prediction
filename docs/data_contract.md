@@ -30,8 +30,10 @@ data/
   processed/
     final_cohort.csv
     extracted_features.csv
+    extracted_features_phase3.csv
     preprocessed_logistic_features.csv
     preprocessed_xgboost_features.csv
+    preprocessed_xgboost_phase3_features.csv
     preprocessed_random_forest_features.csv
 ```
 
@@ -52,6 +54,14 @@ python src/cohort_selection.py
 python src/feature_extraction.py
 python src/data_preprocessing.py
 python src/main.py --model xgboost --no-tune --no-shap
+```
+
+Optional Phase 3 expanded feature and ablation path:
+
+```bash
+python src/feature_extraction.py --enable-phase3-features
+python src/data_preprocessing.py --input-path data/processed/extracted_features_phase3.csv --model-type xgboost --output-path data/processed/preprocessed_xgboost_phase3_features.csv
+python tools/run_xgboost_ablation.py --baseline-data-path data/processed/preprocessed_xgboost_features.csv --expanded-data-path data/processed/preprocessed_xgboost_phase3_features.csv
 ```
 
 The first three commands require local data access. They are documented for

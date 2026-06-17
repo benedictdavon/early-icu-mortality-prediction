@@ -99,6 +99,17 @@ python src/feature_extraction.py
 python src/data_preprocessing.py
 ```
 
+Phase 3 expanded tabular features are opt-in and write separate processed
+artifacts:
+
+```bash
+python src/feature_extraction.py --enable-phase3-features
+python src/data_preprocessing.py \
+  --input-path data/processed/extracted_features_phase3.csv \
+  --model-type xgboost \
+  --output-path data/processed/preprocessed_xgboost_phase3_features.csv
+```
+
 Training examples:
 
 ```bash
@@ -113,6 +124,18 @@ python src/main.py --model random_forest --no-tune --no-shap
 python src/main.py --model logistic_regression --no-tune --no-shap
 python src/main.py --model rf_bagging --no-tune --no-shap
 ```
+
+Leakage-safe baseline vs Phase 3 XGBoost ablation:
+
+```bash
+python tools/run_xgboost_ablation.py \
+  --baseline-data-path data/processed/preprocessed_xgboost_features.csv \
+  --expanded-data-path data/processed/preprocessed_xgboost_phase3_features.csv
+```
+
+The ablation script uses validation data for early stopping and threshold-policy
+selection, then applies selected thresholds unchanged to the held-out test set.
+It saves aggregate reports only.
 
 Optional processed-feature leakage check:
 
