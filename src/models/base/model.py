@@ -10,10 +10,16 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc, precision_recall_curve
 from sklearn.inspection import permutation_importance
 from sklearn.impute import SimpleImputer
-from imblearn.over_sampling import SMOTE
 import time
 from datetime import datetime
 
+try:
+    from imblearn.over_sampling import SMOTE
+except ImportError:
+    SMOTE = None
+
+from data.schema import assert_no_leakage_columns, build_feature_matrix
+from data.splitting import make_train_valid_test_split
 from evaluation.metrics import binary_classification_metrics
 from evaluation.plots import (
     evaluation_plot_paths,
@@ -21,6 +27,7 @@ from evaluation.plots import (
     save_precision_recall_curve,
     save_roc_curve,
 )
+from evaluation.reporting import evaluate_validation_and_test, save_aggregate_report
 from evaluation.thresholds import select_optimal_threshold
 from models.base.persistence import load_model_bundle, save_model_bundle
 
@@ -66,9 +73,19 @@ class ICUMortalityBaseModel:
         # Extract target and features
         print("Columns before dropping:", data.columns.tolist())
         
-        y = data['mortality']
-        # First remove any ID columns or timestamp columns that shouldn't be features
-        X = data.drop(columns=['mortality', 'subject_id', 'hadm_id', 'stay_id'], errors='ignore')
+        y = data['mortality'].astype(int)
+        patient_ids = data['subject_id'] if 'subject_id' in data.columns else None
+
+        # Remove target, identifiers, and obvious outcome proxies before any
+        # preprocessing fit step. Identifiers are retained only in memory for
+        # patient-level split separation.
+        X, dropped_feature_columns = build_feature_matrix(data, target_col='mortality')
+        self.dropped_feature_columns = dropped_feature_columns
+        if dropped_feature_columns:
+            print(
+                "Dropped non-feature/leakage-guard columns:",
+                dropped_feature_columns,
+            )
         
         # Detect and handle datetime columns
         datetime_pattern = r'\d{4}-\d{2}-\d{2}.*|.*\d{2}:\d{2}:\d{2}'
@@ -112,21 +129,32 @@ class ICUMortalityBaseModel:
         print(f"Class distribution: \n{class_counts}")
         print(f"Mortality rate: {class_counts[1] / len(y):.2%}")
         
-        # First split: separate test set (20% of data)
-        X_train_val, X_test, y_train_val, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
+        assert_no_leakage_columns(X.columns, target_col='mortality')
+
+        split_indices = make_train_valid_test_split(
+            y,
+            patient_ids=patient_ids,
+            test_size=0.20,
+            valid_size=0.20,
+            stratify=True,
+            group_by_patient=patient_ids is not None,
+            random_state=42,
         )
-        
-        # Second split: separate validation set (25% of train_val, which is 20% of original data)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train_val, y_train_val, test_size=0.25, random_state=42, stratify=y_train_val
-        )
+        self.split_indices = split_indices
+
+        X_train = X.iloc[split_indices['train']]
+        X_val = X.iloc[split_indices['validation']]
+        X_test = X.iloc[split_indices['test']]
+        y_train = y.iloc[split_indices['train']]
+        y_val = y.iloc[split_indices['validation']]
+        y_test = y.iloc[split_indices['test']]
         
         # Handle missing values
         imputer = SimpleImputer(strategy='median')
         X_train = imputer.fit_transform(X_train)
         X_val = imputer.transform(X_val)
         X_test = imputer.transform(X_test)
+        self.imputer = imputer
 
         self.X_train = X_train
         self.X_val = X_val
@@ -149,6 +177,11 @@ class ICUMortalityBaseModel:
     def handle_class_imbalance(self, sampling_strategy='auto'):
         """Apply SMOTE to handle class imbalance"""
         print("Applying SMOTE for class imbalance...")
+
+        if SMOTE is None:
+            raise ImportError(
+                "SMOTE requires imbalanced-learn. Install it or use a non-resampling imbalance strategy."
+            )
         
         if self.X_train is None:
             raise ValueError("Data must be loaded first using load_data()")
@@ -183,7 +216,7 @@ class ICUMortalityBaseModel:
             raise ValueError("Model must be trained first using train()")
             
         # Get predictions
-        y_pred_proba = self.model.predict_proba(self.X_test)[:, 1]
+        y_pred_proba = self._predict_positive_proba(self.X_test)
         y_pred = (y_pred_proba >= threshold).astype(int)
         
         evaluation_results = binary_classification_metrics(
@@ -196,6 +229,8 @@ class ICUMortalityBaseModel:
         print(f"Recall: {evaluation_results['recall']:.4f}")
         print(f"F1 Score: {evaluation_results['f1_score']:.4f}")
         print(f"AUC-ROC: {evaluation_results['auc_roc']:.4f}")
+        print(f"Average Precision: {evaluation_results['average_precision']:.4f}")
+        print(f"Brier Score: {evaluation_results['brier_score']:.4f}")
         
         # Classification report
         print("\nClassification Report:")
@@ -235,7 +270,7 @@ class ICUMortalityBaseModel:
             raise ValueError("Model must be trained first using train()")
                 
         # Get predictions
-        y_pred_proba = self.model.predict_proba(self.X_val)[:, 1]
+        y_pred_proba = self._predict_positive_proba(self.X_val)
         y_pred = (y_pred_proba >= threshold).astype(int)
         
         results = binary_classification_metrics(
@@ -248,14 +283,60 @@ class ICUMortalityBaseModel:
         print(f"Validation Recall: {results['recall']:.4f}")
         print(f"Validation F1 Score: {results['f1_score']:.4f}")
         print(f"Validation AUC-ROC: {results['auc_roc']:.4f}")
+        print(f"Validation Average Precision: {results['average_precision']:.4f}")
+        print(f"Validation Brier Score: {results['brier_score']:.4f}")
         
         return {
             'accuracy': results['accuracy'],
             'precision': results['precision'],
             'recall': results['recall'],
             'f1_score': results['f1_score'],
-            'auc_roc': results['auc_roc']
+            'auc_roc': results['auc_roc'],
+            'average_precision': results['average_precision'],
+            'brier_score': results['brier_score'],
         }
+
+    def evaluate_threshold_policies(self):
+        """Select threshold policies on validation and apply them to test."""
+        if self.model is None:
+            raise ValueError("Model must be trained first using train()")
+        if self.X_val is None or self.X_test is None:
+            raise ValueError("Validation and test data are required")
+
+        p_valid = self._predict_positive_proba(self.X_val)
+        p_test = self._predict_positive_proba(self.X_test)
+
+        report = evaluate_validation_and_test(
+            model_name=self.model_name,
+            y_valid=self.y_val,
+            p_valid=p_valid,
+            y_test=self.y_test,
+            p_test=p_test,
+        )
+        saved_paths = save_aggregate_report(report, self.output_dir)
+        print("Saved threshold-policy aggregate report:")
+        print(f"  JSON: {saved_paths['json']}")
+        print(f"  CSV: {saved_paths['csv']}")
+        return report
+
+    def _predict_positive_proba(self, X):
+        """Return positive-class probabilities using model-specific preprocessing."""
+        custom_predict_proba = getattr(type(self), "predict_proba", None)
+        if custom_predict_proba is not None:
+            proba = custom_predict_proba(self, X)
+        elif hasattr(self, "predict") and getattr(type(self), "predict", None) is not ICUMortalityBaseModel.__dict__.get("predict"):
+            prediction = self.predict(X)
+            if isinstance(prediction, tuple) and len(prediction) == 2:
+                proba = prediction[1]
+            else:
+                proba = prediction
+        else:
+            proba = self.model.predict_proba(X)
+
+        proba = np.asarray(proba)
+        if proba.ndim == 2:
+            return proba[:, 1]
+        return proba.astype(float)
 
     def cross_validate(self, cv=5):
         """Perform cross-validation with multiple metrics at once"""

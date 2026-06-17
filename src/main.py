@@ -70,7 +70,7 @@ def train_and_evaluate_model(model, data_path, tune=True, early_stopping=True, u
     model.load_data(data_path)
     
     # For logistic regression, select important features first
-    if isinstance(model, ICUMortalityLogisticRegression):
+    if model.__class__.__name__ == 'ICUMortalityLogisticRegression':
         print("Selecting important features...")
         model.select_important_features()
 
@@ -99,7 +99,7 @@ def train_and_evaluate_model(model, data_path, tune=True, early_stopping=True, u
     print("Evaluating model...")
     
     # Special handling for XGBoost to use comprehensive evaluation
-    if isinstance(model, ICUMortalityXGBoost):
+    if model.__class__.__name__ == 'ICUMortalityXGBoost':
         print("Performing comprehensive evaluation for XGBoost model...")
         evaluation = model.evaluate(
             threshold=best_threshold, 
@@ -125,6 +125,13 @@ def train_and_evaluate_model(model, data_path, tune=True, early_stopping=True, u
     # Evaluate on validation set too
     print("Evaluating on validation set...")
     val_evaluation = model.evaluate_validation(threshold=best_threshold)
+
+    # Save aggregate validation/test reports for the three fixed threshold
+    # policies. Thresholds are selected on validation probabilities only and
+    # then applied unchanged to the held-out test set.
+    if hasattr(model, 'evaluate_threshold_policies'):
+        print("Generating validation-selected threshold policy report...")
+        model.evaluate_threshold_policies()
     
     # Calculate feature importance
     print("Calculating feature importance...")
@@ -140,7 +147,7 @@ def train_and_evaluate_model(model, data_path, tune=True, early_stopping=True, u
             print(f"SHAP analysis failed: {str(e)}")
     
     # Model-specific analysis
-    if isinstance(model, ICUMortalityLogisticRegression):
+    if model.__class__.__name__ == 'ICUMortalityLogisticRegression':
         print("Generating coefficient analysis...")
         model.plot_coefficient_analysis()
         model.calculate_odds_ratios()
