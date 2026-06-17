@@ -20,7 +20,7 @@ def load_cohort(cohort_path):
     
     # Define observation window endpoints
     cohort['window_end'] = cohort['intime'] + pd.Timedelta(hours=6)
-    cohort['window_end_bmi'] = cohort['intime'] + pd.Timedelta(hours=24)  # 24 hour window for BMI
+    cohort['window_end_bmi'] = cohort['window_end']
     
     print(f"Loaded cohort with {len(cohort)} patients")
     return cohort

@@ -166,11 +166,11 @@ def extract_early_window_features(cohort, icu_path, hosp_path):
                     print("Sample intime:", chunk_filtered['intime'].iloc[0])
                 continue
             
-            # Keep only measurements within first 6.5 hours
-            chart_time_mask = chunk_filtered['hours_from_admit'] <= 6.5
+            # Keep only measurements within the first 6 hours.
+            chart_time_mask = chunk_filtered['hours_from_admit'] <= 6.0
             if not chart_time_mask.any():
                 if chunk_idx == 0:
-                    print("WARNING: No vital records within 6.5 hours of admission in first chunk")
+                    print("WARNING: No vital records within 6 hours of admission in first chunk")
                 continue
                 
             chunk_filtered = chunk_filtered[chart_time_mask].copy()
@@ -361,11 +361,11 @@ def extract_early_window_features(cohort, icu_path, hosp_path):
                 print(f"ERROR calculating lab hours_from_admit: {str(e)}")
                 continue
             
-            # Keep only measurements within first 6.5 hours
-            lab_time_mask = chunk_filtered['hours_from_admit'] <= 6.5
+            # Keep only measurements within the first 6 hours.
+            lab_time_mask = chunk_filtered['hours_from_admit'] <= 6.0
             if not lab_time_mask.any():
                 if chunk_idx == 0:
-                    print("WARNING: No lab records within 6.5 hours of admission in first chunk")
+                    print("WARNING: No lab records within 6 hours of admission in first chunk")
                 continue
                 
             chunk_filtered = chunk_filtered[lab_time_mask].copy()
@@ -505,8 +505,8 @@ def extract_early_window_values(data, cohort, itemids, var_name, time_windows):
         # Calculate hours from admission
         pts_data['hours_from_admit'] = (pts_data['charttime'] - intime).dt.total_seconds() / 3600
         
-        # Filter to first 6 hours only
-        pts_data = pts_data[pts_data['hours_from_admit'] <= 6.5].copy()  # Explicit .copy()
+        # Filter to first 6 hours only. The upper boundary is inclusive.
+        pts_data = pts_data[pts_data['hours_from_admit'] <= 6.0].copy()
         
         # Extract values for each time window
         result = {'stay_id': stay_id}

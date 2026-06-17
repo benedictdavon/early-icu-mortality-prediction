@@ -334,7 +334,7 @@ def extract_urine_output(cohort, icu_path):
 
 
 def calculate_bmi(cohort, chart_data):
-    """Calculate BMI from height and weight measurements with improved coverage."""
+    """Calculate BMI from height and weight measurements within the first 6h."""
     # Extract unique stay_ids for faster filtering
     stay_ids = set(cohort['stay_id'])
     
@@ -353,8 +353,8 @@ def calculate_bmi(cohort, chart_data):
     # Create dictionaries for O(1) lookup time
     cohort_dict = cohort.set_index('stay_id')[['intime', 'window_end_bmi']].to_dict('index')
     
-    # Expanded time window for better coverage
-    window_hours = 48  # Extended from 24 to 48 hours
+    # Strict first-6-hour observation window for leakage-safe prediction.
+    window_hours = 6
     
     # Extract heights with vectorized operations where possible
     height_data = height_data.sort_values('charttime')
