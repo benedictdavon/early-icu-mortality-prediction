@@ -149,6 +149,8 @@ See [`docs/evaluation_protocol.md`](docs/evaluation_protocol.md) and
 [`docs/leakage_checklist.md`](docs/leakage_checklist.md). The aggregate result
 format is documented in
 [`docs/experiment_result_schema.md`](docs/experiment_result_schema.md).
+Feature provenance is tracked in
+[`docs/feature_dictionary.csv`](docs/feature_dictionary.csv).
 
 ## Reported Results
 

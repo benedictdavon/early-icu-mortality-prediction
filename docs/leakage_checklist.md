@@ -42,6 +42,15 @@ Model features must not include:
 - row-level timestamps that imply information after the prediction window
 
 The canonical processed-feature guard lives in `src/data/schema.py`.
+Feature provenance metadata lives in `src/features/provenance.py`, with the
+checked-in aggregate dictionary at `docs/feature_dictionary.csv`.
+
+Known Phase 2 provenance note:
+
+- `has_metastatic_cancer` is flagged as high leakage risk and not allowed by
+  the provenance registry until the extractor is limited to prior or otherwise
+  admission-time-known diagnoses.
+- BMI extraction is now restricted to first-6-hour height/weight measurements.
 
 ## Automated Checks
 

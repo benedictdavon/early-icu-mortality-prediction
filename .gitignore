@@ -31,3 +31,6 @@ predictions/
 configs/paths.yaml
 configs/local*.yaml
 configs/*secret*.yaml
+!docs/feature_dictionary.csv
+!tests/fixtures/
+!tests/fixtures/*.csv
