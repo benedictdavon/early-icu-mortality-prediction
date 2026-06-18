@@ -83,7 +83,7 @@ def check_record_duration(first_stays, icu_path):
     final_cohort = first_stays_with_records[first_stays_with_records['duration_hours'] >= 6]
     final_cohort_count = len(final_cohort)
     insufficient_records_count = len(first_stays_with_records) - final_cohort_count
-    print(f"Final cohort after filtering for ≥6 hours of records: {final_cohort_count}")
+    print(f"Final cohort after filtering for 6+ hours of records: {final_cohort_count}")
     print(f"Excluded {insufficient_records_count} patients with <6 hours of records")
     
     return final_cohort, final_cohort_count, insufficient_records_count
@@ -112,7 +112,7 @@ def print_statistics(total_patients, icu_patients, first_stays_count,
     print(f"Patients with ICU stays: {icu_patients}")
     print(f"Filtered to first ICU stay only: {first_stays_count}")
     print(f"  Excluded: {multiple_stays_excluded} repeat ICU stays")
-    print(f"Final cohort with ≥6 hours of records: {final_cohort_count}")
+    print(f"Final cohort with 6+ hours of records: {final_cohort_count}")
     print(f"  Excluded: {insufficient_records_count} patients with <6 hours of records")
 
 

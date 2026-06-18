@@ -10,3 +10,4 @@ joblib
 shap
 tqdm
 pyyaml
+charset_normalizer

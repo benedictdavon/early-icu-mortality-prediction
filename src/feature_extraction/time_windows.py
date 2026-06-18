@@ -3,6 +3,201 @@ import pandas as pd
 import numpy as np
 import os
 from tqdm import tqdm
+import sys
+
+
+def _make_tqdm(
+    iterable,
+    desc: str | None = None,
+    *,
+    unit: str = "it",
+    unit_scale: bool = False,
+    leave: bool = False,
+):
+    """Create tqdm iterator with consistent output behavior."""
+    kwargs = dict(
+        desc=desc,
+        unit=unit,
+        unit_scale=unit_scale,
+        file=sys.stdout,
+        leave=leave,
+        mininterval=0.25,
+        miniters=1,
+        smoothing=0.1,
+        ascii=True,
+        dynamic_ncols=True,
+        disable=False,
+    )
+    try:
+        # Newer tqdm versions support `force` to render bars even when not attached
+        # to a tty. Keep this path for environments where available.
+        return tqdm(iterable, force=True, **kwargs)
+    except Exception:
+        # Older tqdm versions don't accept `force`; explicitly keep progress enabled.
+        return tqdm(iterable, **kwargs)
+
+
+def _chunked_measurements(
+    path: str,
+    *,
+    id_col: str,
+    source_to_stay: dict[int, int],
+    stay_ids: set[int],
+    intime_by_stay: dict[int, pd.Timestamp],
+    itemid_to_variable: dict[int, str],
+    max_hours: float,
+    chunk_size: int = 1_000_000,
+    description: str,
+) -> pd.DataFrame:
+    """Read one event table in chunks and return rows within 6h for target variables."""
+    frames: list[pd.DataFrame] = []
+    relevant_itemids = list(itemid_to_variable.keys())
+    total_rows = 0
+    total_kept = 0
+
+    for chunk_idx, chunk_orig in enumerate(
+        _make_tqdm(
+            pd.read_csv(
+                path,
+                usecols=[id_col, "charttime", "itemid", "valuenum"],
+                dtype={"stay_id": "Int64", "subject_id": "Int64", "itemid": "Int64", "valuenum": float},
+                chunksize=chunk_size,
+            ),
+            desc=description,
+            unit="chunk",
+            leave=False,
+        )
+    ):
+        chunk = chunk_orig.copy()
+        total_rows += len(chunk)
+        chunk = chunk.dropna(subset=[id_col, "itemid", "charttime", "valuenum"])
+        if chunk.empty:
+            continue
+
+        chunk[id_col] = chunk[id_col].astype(int)
+        chunk["itemid"] = chunk["itemid"].astype(int)
+
+        # Map source subject/stay identifier to canonical stay_id
+        chunk["stay_id"] = chunk[id_col].map(source_to_stay)
+        chunk = chunk.dropna(subset=["stay_id"])
+        chunk["stay_id"] = chunk["stay_id"].astype(int)
+        chunk = chunk[chunk["stay_id"].isin(stay_ids)]
+        if chunk.empty:
+            continue
+
+        chunk = chunk[chunk["itemid"].isin(relevant_itemids)]
+        if chunk.empty:
+            continue
+
+        chunk["charttime"] = pd.to_datetime(chunk["charttime"], errors="coerce")
+        chunk = chunk.dropna(subset=["charttime"])
+        if chunk.empty:
+            continue
+
+        chunk["intime"] = chunk["stay_id"].map(intime_by_stay)
+        chunk = chunk.dropna(subset=["intime"])
+        if chunk.empty:
+            continue
+
+        chunk["hours_from_admit"] = (
+            pd.to_datetime(chunk["charttime"]) - pd.to_datetime(chunk["intime"])
+        ).dt.total_seconds() / 3600
+        chunk = chunk[chunk["hours_from_admit"] <= max_hours]
+        if chunk.empty:
+            continue
+
+        chunk["variable"] = chunk["itemid"].map(itemid_to_variable)
+        chunk = chunk.dropna(subset=["variable"])
+        if chunk.empty:
+            continue
+
+        total_kept += len(chunk)
+        if chunk_idx < 1:
+            print(f"{description}: first chunk rows kept = {len(chunk)}")
+
+        frames.append(
+            chunk[["stay_id", "variable", "hours_from_admit", "valuenum"]].copy()
+        )
+
+    if not frames:
+        return pd.DataFrame(columns=["stay_id", "variable", "hours_from_admit", "valuenum"])
+
+    print(f"{description}: filtered rows {total_kept} from {total_rows} scanned rows")
+    return pd.concat(frames, ignore_index=True)
+
+
+def _build_window_columns(
+    result_df: pd.DataFrame,
+    measurements: pd.DataFrame,
+    variables: list[str],
+    time_windows: list[int],
+) -> pd.DataFrame:
+    """Populate {variable}_hour_{window} columns from nearest measurements."""
+    output = result_df.copy(deep=True)
+    for var_name in _make_tqdm(
+        variables,
+        desc="Computing time windows",
+        unit="variable",
+    ):
+        var_data = measurements[measurements["variable"] == var_name]
+        if var_data.empty:
+            for window in time_windows:
+                output[f"{var_name}_hour_{window}"] = np.nan
+            print(f"  - {var_name}: no measurements available")
+            continue
+
+        for window in time_windows:
+            if window == 0:
+                filtered = var_data[var_data["hours_from_admit"] <= 1.0]
+            else:
+                lower = max(0.0, window - 0.5)
+                upper = window + 0.5
+                filtered = var_data[
+                    (var_data["hours_from_admit"] >= lower)
+                    & (var_data["hours_from_admit"] <= upper)
+                ]
+
+            col_name = f"{var_name}_hour_{window}"
+            if filtered.empty:
+                output[col_name] = np.nan
+                continue
+
+            with_abs_diff = filtered.assign(
+                abs_diff=(filtered["hours_from_admit"] - float(window)).abs()
+            )
+            nearest = (
+                with_abs_diff.loc[
+                    with_abs_diff.groupby("stay_id")["abs_diff"].idxmin()
+                ]
+                .loc[:, ["stay_id", "valuenum"]]
+                .set_index("stay_id")["valuenum"]
+            )
+            output[col_name] = output["stay_id"].map(nearest)
+
+            non_null = output[col_name].notna().sum()
+            pct_complete = non_null / len(output) * 100
+            print(f"  - {col_name}: {non_null} values ({pct_complete:.1f}% complete)")
+
+    return output
+
+
+def _window_coverage_report(
+    measurements: pd.DataFrame,
+    vars_list: list[str],
+    stay_count: int,
+) -> dict[str, int]:
+    if measurements.empty:
+        return {var_name: 0 for var_name in vars_list}
+
+    grouped = measurements.groupby("variable")["stay_id"].nunique()
+    coverage = {var_name: int(grouped.get(var_name, 0)) for var_name in vars_list}
+    for var_name, count in coverage.items():
+        pct = (count / stay_count * 100) if stay_count else 0.0
+        print(
+            f"Found {count}/{stay_count} patients with {var_name} measurements "
+            f"({pct:.1f}% of cohort)"
+        )
+    return coverage
 
 def extract_early_window_features(cohort, icu_path, hosp_path):
     """Memory-optimized extraction of time window features with better performance."""
@@ -60,7 +255,144 @@ def extract_early_window_features(cohort, icu_path, hosp_path):
     
     # Initialize result dataframe - explicitly with stay_id as integer
     result_df = pd.DataFrame({'stay_id': stay_ids})
-    
+
+    ###########################################
+    # VECTORIZED 6H EXTRACTION PIPELINE
+    ###########################################
+    try:
+        print("Running vectorized 6-hour extraction path...")
+
+        chart_path = os.path.join(icu_path, "_chartevents.csv")
+        if not os.path.exists(chart_path):
+            print(f"ERROR: Chart events file not found at {chart_path}")
+            return result_df
+
+        chart_sample = pd.read_csv(
+            chart_path,
+            nrows=10,
+            usecols=["stay_id", "charttime", "itemid", "valuenum"],
+        )
+        print(f"Chart events sample columns: {chart_sample.columns.tolist()}")
+
+        vital_itemid_to_variable = {
+            itemid: var_name for var_name, itemids in vital_itemids.items() for itemid in itemids
+        }
+        vital_measurements = _chunked_measurements(
+            chart_path,
+            id_col="stay_id",
+            source_to_stay={sid: sid for sid in stay_ids},
+            stay_ids=set(stay_ids),
+            intime_by_stay=intime_dict,
+            itemid_to_variable=vital_itemid_to_variable,
+            max_hours=6.0,
+            chunk_size=1_000_000,
+            description="Scanning chart events (vitals)",
+        )
+        print(f"Total vital measurement rows across all chunks: {len(vital_measurements)}")
+        _window_coverage_report(
+            vital_measurements,
+            list(vital_itemids.keys()),
+            len(stay_ids),
+        )
+        result_df = _build_window_columns(
+            result_df,
+            vital_measurements,
+            list(vital_itemids.keys()),
+            time_windows,
+        )
+
+        lab_path = os.path.join(hosp_path, "_labevents.csv")
+        if not os.path.exists(lab_path):
+            print(f"ERROR: Lab events file not found at {lab_path}")
+            return result_df
+
+        lab_sample = pd.read_csv(lab_path, nrows=10)
+        print(f"Lab events sample columns: {lab_sample.columns.tolist()}")
+
+        lab_itemid_to_variable = {
+            itemid: var_name for var_name, itemids in lab_itemids.items() for itemid in itemids
+        }
+        lab_measurements = _chunked_measurements(
+            lab_path,
+            id_col="subject_id",
+            source_to_stay=subject_to_stay,
+            stay_ids=set(stay_ids),
+            intime_by_stay=intime_dict,
+            itemid_to_variable=lab_itemid_to_variable,
+            max_hours=6.0,
+            chunk_size=1_000_000,
+            description="Scanning lab events",
+        )
+        print(f"Total lab measurement rows across all chunks: {len(lab_measurements)}")
+        _window_coverage_report(
+            lab_measurements,
+            list(lab_itemids.keys()),
+            len(stay_ids),
+        )
+        result_df = _build_window_columns(
+            result_df,
+            lab_measurements,
+            list(lab_itemids.keys()),
+            time_windows,
+        )
+
+        ###########################################
+        # ADD CHANGE FEATURES
+        ###########################################
+        time_window_cols = [col for col in result_df.columns if "_hour_" in col]
+        if time_window_cols:
+            try:
+                first_var = list(vital_itemids.keys())[0]
+                first_col = f"{first_var}_hour_{time_windows[0]}"
+                print(
+                    f"Before adding change features: "
+                    f"{first_col} has {result_df[first_col].notna().sum()} non-null values"
+                )
+
+                if result_df[first_col].notna().sum() > 0:
+                    result_df = add_early_change_features(
+                        result_df,
+                        vital_itemids.keys(),
+                        lab_itemids.keys(),
+                        time_windows,
+                    )
+                    print(
+                        f"After adding change features: "
+                        f"{first_col} has {result_df[first_col].notna().sum()} non-null values"
+                    )
+                else:
+                    print(
+                        "WARNING: Not adding change features because time window columns are empty"
+                    )
+
+                non_null_counts = pd.Series(
+                    {col: result_df[col].notna().sum() for col in time_window_cols}
+                )
+                avg_non_null = non_null_counts.mean()
+                completeness = avg_non_null / len(result_df) * 100
+                print(
+                    f"Extracted time window features have average completeness of {completeness:.1f}%"
+                )
+
+                for var in list(vital_itemids.keys()) + list(lab_itemids.keys()):
+                    var_cols = [col for col in time_window_cols if col.startswith(f"{var}_hour_")]
+                    if var_cols:
+                        var_non_null = pd.Series(
+                            {col: result_df[col].notna().sum() for col in var_cols}
+                        )
+                        var_completeness = var_non_null.mean() / len(result_df) * 100
+                        print(f"  - {var}: {var_completeness:.1f}% complete")
+            except Exception as e:
+                print(f"ERROR adding change features: {str(e)}")
+
+        print(
+            f"Extracted {result_df.shape[1] - 1} early time window features for {len(result_df)} stays"
+        )
+        return result_df
+    except Exception as e:
+        print(f"Vectorized path failed ({str(e)}), falling back to legacy per-patient loop")
+
+    # Fallback to legacy extraction implementation below for backward compatibility.
     ###########################################
     # VITALS EXTRACTION
     ###########################################
@@ -89,15 +421,21 @@ def extract_early_window_features(cohort, icu_path, hosp_path):
         print(f"Error reading chart events sample: {str(e)}")
     
     total_filtered_rows = 0
-    chunk_size = 500000
+    chunk_size = 1_000_000
     
     # Process chart data chunks
-    for chunk_idx, chunk_orig in enumerate(tqdm(pd.read_csv(
-        chart_path,
-        usecols=['stay_id', 'charttime', 'itemid', 'valuenum'],
-        dtype={'stay_id': 'Int64', 'itemid': 'Int64', 'valuenum': float},
-        chunksize=chunk_size
-    ))):
+    for chunk_idx, chunk_orig in enumerate(
+        _make_tqdm(
+            pd.read_csv(
+                chart_path,
+                usecols=['stay_id', 'charttime', 'itemid', 'valuenum'],
+                dtype={'stay_id': 'Int64', 'itemid': 'Int64', 'valuenum': float},
+                chunksize=chunk_size,
+            ),
+            desc="Processing vital chunks",
+            unit="chunk",
+        )
+    ):
         try:
             # Convert charttime to datetime
             chunk = chunk_orig.copy()
@@ -285,12 +623,18 @@ def extract_early_window_features(cohort, icu_path, hosp_path):
     
     # Process lab chunks
     print("Loading and filtering lab measurements...")
-    for chunk_idx, chunk_orig in enumerate(tqdm(pd.read_csv(
-        lab_path,
-        usecols=['subject_id', 'charttime', 'itemid', 'valuenum'],
-        dtype={'subject_id': 'Int64', 'itemid': 'Int64', 'valuenum': float},
-        chunksize=chunk_size
-    ))):
+    for chunk_idx, chunk_orig in enumerate(
+        _make_tqdm(
+            pd.read_csv(
+                lab_path,
+                usecols=['subject_id', 'charttime', 'itemid', 'valuenum'],
+                dtype={'subject_id': 'Int64', 'itemid': 'Int64', 'valuenum': float},
+                chunksize=chunk_size,
+            ),
+            desc="Processing lab chunks",
+            unit="chunk",
+        )
+    ):
         try:
             chunk = chunk_orig.copy()
             
@@ -493,7 +837,10 @@ def extract_early_window_values(data, cohort, itemids, var_name, time_windows):
     """Extract values at specific early time windows for a variable."""
     results = []
     
-    for stay_id in tqdm(cohort['stay_id'].unique(), desc=f"Processing {var_name}"):
+    for stay_id in _make_tqdm(
+        cohort['stay_id'].unique(),
+        desc=f"Processing {var_name}",
+    ):
         intime = cohort.loc[cohort['stay_id'] == stay_id, 'intime'].iloc[0]
         
         # Filter data for this stay and variable
@@ -574,12 +921,27 @@ def add_early_change_features(df, vital_vars, lab_vars, time_windows):
     
     all_vars = list(vital_vars) + list(lab_vars)
     print(f"Adding change features for {len(all_vars)} variables across {len(time_windows)} time windows...")
+
+    new_cols: dict[str, pd.Series] = {}
+    total_vars = len(all_vars)
     
     # Create new columns for the changes without modifying existing ones
-    for var in all_vars:
+    for var_index, var in enumerate(
+        _make_tqdm(
+            all_vars,
+            desc="Adding early change features",
+            unit="var",
+            unit_scale=False,
+        ),
+        start=1,
+    ):
+        if var_index == 1:
+            print(f"  -> {var} (1/{total_vars})")
+        elif var_index % 5 == 0 or var_index == total_vars:
+            print(f"  -> {var} ({var_index}/{total_vars})")
+
         # Add first-to-last change (captures overall trend)
         first_window = min(time_windows)
-
         last_window = max(time_windows)
         
         first_col = f'{var}_hour_{first_window}'
@@ -592,18 +954,19 @@ def add_early_change_features(df, vital_vars, lab_vars, time_windows):
             
             # Overall change - use loc to safely add a new column
             change_col = f'{var}_change_0to6'
-            result_df.loc[:, change_col] = last_values - first_values
+            change = last_values - first_values
+            new_cols[change_col] = change
             
             # Debug info for first variable
             if var == all_vars[0]:
-                print(f"  Created {change_col}: {result_df[change_col].notna().sum()} non-null values")
+                print(f"  Created {change_col}: {change.notna().sum()} non-null values")
                 print(f"  DURING: {first_col} still has {result_df[first_col].notna().sum()} non-null values")
             
             # Hourly rate of change
             hours_diff = last_window - first_window
             if hours_diff > 0:
                 hourly_col = f'{var}_hourly_change'
-                result_df.loc[:, hourly_col] = result_df[change_col] / hours_diff
+                new_cols[hourly_col] = change / hours_diff
         
         # Add adjacent time window changes
         for i in range(len(time_windows) - 1):
@@ -615,16 +978,20 @@ def add_early_change_features(df, vital_vars, lab_vars, time_windows):
             
             if col1 in result_df.columns and col2 in result_df.columns:
                 # Get copies of the values to avoid any reference issues
-                values1 = result_df[col1].copy()
-                values2 = result_df[col2].copy()
+                values1 = result_df[col1]
+                values2 = result_df[col2]
                 
                 # Change between adjacent windows
                 delta_col = f'{var}_delta_{t1}to{t2}'
-                result_df.loc[:, delta_col] = values2 - values1
+                delta = values2 - values1
                 
                 # Debug info for first iteration
                 if var == all_vars[0] and i == 0:
-                    print(f"  Created {delta_col}: {result_df[delta_col].notna().sum()} non-null values")
+                    print(f"  Created {delta_col}: {delta.notna().sum()} non-null values")
+                new_cols[delta_col] = delta
+
+    if new_cols:
+        result_df = pd.concat([result_df, pd.DataFrame(new_cols, index=result_df.index)], axis=1)
     
     # Verify the original columns are still present
     time_window_cols_after = [col for col in result_df.columns if '_hour_' in col]

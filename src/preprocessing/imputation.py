@@ -33,9 +33,15 @@ def analyze_missingness(df):
 
 
 
-def handle_missing_data(df, missingness_data):
+def handle_missing_data(
+    df,
+    missingness_data,
+    imputation_strategy="mice",
+    mice_max_iter=10,
+    mice_n_estimators=50,
+):
     """Handle missing data using improved MICE implementation."""
-    print("Handling missing data with advanced MICE implementation...")
+    print(f"Handling missing data with {imputation_strategy} imputation...")
     
     # Step 1: Drop features with extreme missingness (>80%)
     extreme_missing = missingness_data['extreme_missing']
@@ -48,18 +54,20 @@ def handle_missing_data(df, missingness_data):
         if feature in processed_df.columns and processed_df[feature].isnull().any():
             processed_df[f'{feature}_missing'] = processed_df[feature].isnull().astype(int)
     
-    # Step 3: Apply MICE imputation to remaining missing values
+    # Step 3: Apply imputation to remaining missing values
     # Exclude high-missing features (50-80%)
     exclude_from_mice = missingness_data['high_missing'] + missingness_data['moderate_missing']
-    
-    # Call our new MICE implementation
-    processed_df, imputation_stats = impute_with_mice(
-        processed_df,
-        max_iter=10,
-        n_estimators=50,
-        exclude_features=exclude_from_mice,
-        verbose=True
-    )
+
+    if imputation_strategy == "median":
+        processed_df = impute_with_median_mode(processed_df, verbose=True)
+    else:
+        processed_df, imputation_stats = impute_with_mice(
+            processed_df,
+            max_iter=mice_max_iter,
+            n_estimators=mice_n_estimators,
+            exclude_features=exclude_from_mice,
+            verbose=True
+        )
     
     # Step 4: Handle any remaining missing values with simpler methods
     remaining_missing = processed_df.isnull().sum().sum()
@@ -79,6 +87,37 @@ def handle_missing_data(df, missingness_data):
     
     print(f"Final dataset shape after handling missing data: {processed_df.shape}")
     return processed_df
+
+
+def impute_with_median_mode(df, verbose=True):
+    """Fast deterministic imputation for large overnight experiments."""
+    imputed_df = df.copy()
+    total_missing_before = int(imputed_df.isnull().sum().sum())
+
+    if verbose:
+        print("Starting median/mode imputation process...")
+        print(f"Missing values before: {total_missing_before}")
+
+    for col in imputed_df.columns:
+        if not imputed_df[col].isnull().any():
+            continue
+
+        if np.issubdtype(imputed_df[col].dtype, np.number):
+            fill_value = imputed_df[col].median()
+            if pd.isna(fill_value):
+                fill_value = 0
+            imputed_df[col] = imputed_df[col].fillna(fill_value)
+        else:
+            mode = imputed_df[col].mode(dropna=True)
+            fill_value = mode.iloc[0] if not mode.empty else "missing"
+            imputed_df[col] = imputed_df[col].fillna(fill_value)
+
+    if verbose:
+        total_missing_after = int(imputed_df.isnull().sum().sum())
+        print("Median/mode imputation completed")
+        print(f"Missing values after: {total_missing_after}")
+
+    return imputed_df
 
 def impute_with_mice(df, max_iter=10, n_estimators=50, categorical_features=None, 
                      exclude_features=None, random_state=42, verbose=True):

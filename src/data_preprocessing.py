@@ -18,7 +18,10 @@ def enhanced_preprocess_pipeline(
     target_col=None, 
     keep_clinical=True,
     model_type=None,
-    n_features=None
+    n_features=None,
+    imputation_strategy="mice",
+    mice_max_iter=10,
+    mice_n_estimators=50,
 ):
     """
     Execute the enhanced preprocessing pipeline with focus on predictive clinical features
@@ -71,7 +74,13 @@ def enhanced_preprocess_pipeline(
     df = label_gender(df)
 
     # Step 6: Handle missing data
-    df = handle_missing_data(df, missingness_data)
+    df = handle_missing_data(
+        df,
+        missingness_data,
+        imputation_strategy=imputation_strategy,
+        mice_max_iter=mice_max_iter,
+        mice_n_estimators=mice_n_estimators,
+    )
     
     # Step 7: Clean clinical measurements with domain knowledge (with unit detection)
     df = clean_clinical_measurements(df)
@@ -204,6 +213,24 @@ def parse_args():
         default=None,
         help="Directory for preprocessing reports",
     )
+    parser.add_argument(
+        "--imputation-strategy",
+        choices=["mice", "median"],
+        default=os.environ.get("PREPROCESS_IMPUTATION_STRATEGY", "mice"),
+        help="Missing-data imputation strategy. Use median for fast overnight runs.",
+    )
+    parser.add_argument(
+        "--mice-max-iter",
+        type=int,
+        default=int(os.environ.get("MICE_MAX_ITER", "10")),
+        help="Maximum MICE iterations when --imputation-strategy=mice.",
+    )
+    parser.add_argument(
+        "--mice-n-estimators",
+        type=int,
+        default=int(os.environ.get("MICE_N_ESTIMATORS", "50")),
+        help="Random forest estimator count for MICE.",
+    )
     return parser.parse_args()
 
 
@@ -255,7 +282,10 @@ def main(args=None):
             report_dir=os.path.join(report_dir, model_type),
             target_col=target_column,
             keep_clinical=True,
-            model_type=model_type
+            model_type=model_type,
+            imputation_strategy=args.imputation_strategy,
+            mice_max_iter=args.mice_max_iter,
+            mice_n_estimators=args.mice_n_estimators,
         )
         
         print(f"Completed preprocessing for {model_type} model")
