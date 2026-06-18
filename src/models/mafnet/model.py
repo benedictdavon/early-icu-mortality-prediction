@@ -53,7 +53,7 @@ class MissingnessAwareTemporalEncoder(nn.Module):
             dropout=0.10,
             activation="gelu",
             batch_first=True,
-            norm_first=True,
+            norm_first=False,
         )
         self.transformer = (
             nn.TransformerEncoder(

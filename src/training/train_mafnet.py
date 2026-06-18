@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,11 @@ from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_s
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from torch.utils.data import DataLoader
+
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from data.schema import build_feature_matrix
 from data.splitting import make_train_valid_test_split
@@ -50,6 +56,19 @@ from training.losses import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = ROOT / "configs" / "mafnet.yaml"
+
+
+def _torch_load_compatible(path: str | Path, *, map_location: str | torch.device) -> dict:
+    """Load checkpoints with weights-only mode when available.
+
+    Newer PyTorch versions can safely load with ``weights_only=True``.
+    Fall back to the legacy signature on older versions.
+    """
+    kwargs = {"map_location": map_location}
+    try:
+        return torch.load(path, weights_only=True, **kwargs)
+    except TypeError:
+        return torch.load(path, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -233,7 +252,11 @@ def _align_features_to_stays(
     target_col: str = "mortality",
 ) -> pd.DataFrame:
     if id_col not in feature_frame.columns:
-        raise ValueError(f"feature_frame must contain `{id_col}`")
+        raise ValueError(
+            f"feature_frame must contain `{id_col}`. Use extracted features "
+            "for MAFNet, not model-specific preprocessed feature CSVs that "
+            "drop identifier columns."
+        )
     if target_col not in feature_frame.columns:
         raise ValueError(f"feature_frame must contain `{target_col}`")
     indexed = feature_frame.drop_duplicates(subset=[id_col]).set_index(id_col)
@@ -604,7 +627,7 @@ def save_temporal_pretraining_checkpoint(model: MAFNet, path: str | Path) -> Pat
 
 def load_pretrained_temporal_modules(model: MAFNet, path: str | Path) -> None:
     """Load temporal encoder and auxiliary heads into a MAFNet model."""
-    checkpoint = torch.load(path, map_location="cpu")
+    checkpoint = _torch_load_compatible(path, map_location="cpu")
     model.temporal_encoder.load_state_dict(checkpoint["temporal_encoder"])
     model.reconstruction_head.load_state_dict(checkpoint["reconstruction_head"])
     model.measurement_forecast_head.load_state_dict(checkpoint["measurement_forecast_head"])
@@ -692,6 +715,7 @@ def train_mafnet_from_bundle(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    print(f"Preparing MAFNet datasets on device={device}...", flush=True)
     data_bundle = prepare_mafnet_datasets(
         raw_temporal_bundle,
         feature_frame,
@@ -701,6 +725,13 @@ def train_mafnet_from_bundle(
         test_size=float(data_cfg.get("test_size", 0.20)),
         seed=seed,
         evaluate_test=evaluate_test,
+    )
+    print(
+        "Prepared MAFNet splits: "
+        f"train={len(data_bundle.datasets['train'])}, "
+        f"validation={len(data_bundle.datasets['validation'])}, "
+        f"test={len(data_bundle.datasets['test']) if evaluate_test else 0}",
+        flush=True,
     )
 
     batch_size = int(train_cfg.get("batch_size", 256))
@@ -748,6 +779,7 @@ def train_mafnet_from_bundle(
     pretrain_epochs = int(train_cfg.get("pretrain_epochs", 20))
     gradient_clip_norm = float(train_cfg.get("gradient_clip_norm", 1.0))
     if pretrain_epochs > 0:
+        print(f"Starting MAFNet temporal pretraining for {pretrain_epochs} epochs", flush=True)
         pretrain_optimizer = torch.optim.AdamW(
             _temporal_aux_parameters(model),
             lr=float(train_cfg.get("pretrain_lr", 0.001)),
@@ -764,10 +796,17 @@ def train_mafnet_from_bundle(
                 gradient_clip_norm=gradient_clip_norm,
             )
             history.append({"stage": "pretrain", "epoch": epoch, **losses})
+            print(
+                "MAFNet pretrain "
+                f"epoch {epoch}/{pretrain_epochs}: "
+                + ", ".join(f"{key}={value:.5f}" for key, value in losses.items()),
+                flush=True,
+            )
         pretrain_checkpoint_path = save_temporal_pretraining_checkpoint(
             model,
             out / "pretrained_temporal.pt",
         )
+        print(f"Saved temporal pretraining checkpoint: {pretrain_checkpoint_path}", flush=True)
 
     loss_config = MAFNetLossConfig(
         lambda_recon=float(loss_cfg.get("lambda_recon", 0.05)),
@@ -796,6 +835,7 @@ def train_mafnet_from_bundle(
     best_metrics: dict = {}
     best_checkpoint_path = out / "best_model.pt"
     max_epochs = int(train_cfg.get("max_epochs", 150))
+    print(f"Starting MAFNet supervised fine-tuning for up to {max_epochs} epochs", flush=True)
     for epoch in range(1, max_epochs + 1):
         losses = train_mafnet_one_epoch(
             model,
@@ -825,6 +865,16 @@ def train_mafnet_from_bundle(
                 "learning_rate": float(optimizer.param_groups[0]["lr"]),
             }
         )
+        print(
+            "MAFNet finetune "
+            f"epoch {epoch}/{max_epochs}: "
+            f"loss={losses['loss']:.5f}, "
+            f"mortality_loss={losses['mortality_loss']:.5f}, "
+            f"val_ap={validation_metrics['average_precision']:.5f}, "
+            f"val_auc={validation_metrics['auc_roc']:.5f}, "
+            f"lr={float(optimizer.param_groups[0]['lr']):.6g}",
+            flush=True,
+        )
 
         if validation_ap > best_score:
             best_score = float(validation_ap)
@@ -839,12 +889,20 @@ def train_mafnet_from_bundle(
                 ),
                 best_checkpoint_path,
             )
+            print(
+                f"  new best validation AP={best_score:.5f}; saved {best_checkpoint_path}",
+                flush=True,
+            )
 
         if stopper.step(validation_ap):
+            print(
+                f"Early stopping after epoch {epoch}; best validation AP={best_score:.5f}",
+                flush=True,
+            )
             break
 
     if best_checkpoint_path.exists():
-        checkpoint = torch.load(best_checkpoint_path, map_location=device)
+        checkpoint = _torch_load_compatible(best_checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
 
     calibration_method_raw = evaluation_cfg.get("calibration", "platt_scaling")
@@ -1016,11 +1074,22 @@ def train_mafnet_from_frames(
     """Build temporal tensors from long-form events and run MAFNet training."""
     cfg = load_mafnet_config(config_path, config)
     data_cfg = cfg.get("data", {})
+    print(
+        "Building MAFNet temporal tensors: "
+        f"events={len(events)}, cohort={len(cohort)}, features={len(feature_frame)}",
+        flush=True,
+    )
     raw_bundle = build_15min_temporal_tensors(
         events,
         cohort,
         window_hours=float(data_cfg.get("time_window_hours", 6.0)),
         bin_minutes=int(data_cfg.get("bin_minutes", 15)),
+    )
+    print(
+        "Built MAFNet temporal tensors: "
+        f"stays={len(raw_bundle['stay_ids'])}, "
+        f"x_temporal_shape={tuple(raw_bundle['x_temporal'].shape)}",
+        flush=True,
     )
     return train_mafnet_from_bundle(
         raw_bundle,
@@ -1060,9 +1129,15 @@ def main() -> None:
     if not overrides["training"]:
         overrides = None
 
+    print(f"Loading MAFNet events from {args.events_path}", flush=True)
     events = pd.read_csv(args.events_path)
+    print(f"Loaded MAFNet events: shape={events.shape}", flush=True)
+    print(f"Loading MAFNet cohort from {args.cohort_path}", flush=True)
     cohort = pd.read_csv(args.cohort_path)
+    print(f"Loaded MAFNet cohort: shape={cohort.shape}", flush=True)
+    print(f"Loading MAFNet features from {args.features_path}", flush=True)
     features = pd.read_csv(args.features_path)
+    print(f"Loaded MAFNet features: shape={features.shape}", flush=True)
     result = train_mafnet_from_frames(
         events,
         cohort,
