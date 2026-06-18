@@ -30,6 +30,13 @@ def logits_to_probabilities(logits) -> np.ndarray:
     return _sigmoid(logits).reshape(-1)
 
 
+def probabilities_to_logits(probabilities, eps: float = 1e-6) -> np.ndarray:
+    """Convert probabilities to logits for probability-based calibration."""
+    p = _as_1d_array(probabilities, "probabilities")
+    p = np.clip(p, eps, 1.0 - eps)
+    return np.log(p / (1.0 - p)).reshape(-1)
+
+
 @dataclass
 class PlattScaler:
     """Validation-fitted logistic calibration for model logits."""
@@ -180,6 +187,41 @@ def apply_isotonic_calibrator(calibrator: IsotonicCalibrator, logits) -> np.ndar
     return calibrator.predict_proba(logits)
 
 
+def fit_probability_calibrator(
+    validation_probabilities,
+    validation_labels,
+    *,
+    method: str = "platt",
+    C: float = 1.0,
+    max_iter: int = 1000,
+):
+    """Fit a validation-only calibrator from probabilities.
+
+    Platt scaling is fit on the logit transform of validation probabilities.
+    Isotonic calibration is fit directly on validation probabilities.
+    """
+    probabilities = _as_1d_array(validation_probabilities, "validation_probabilities")
+    if method == "platt":
+        return fit_platt_scaler(
+            probabilities_to_logits(probabilities),
+            validation_labels,
+            C=C,
+            max_iter=max_iter,
+        )
+    if method == "isotonic":
+        return fit_isotonic_calibrator(probabilities, validation_labels)
+    raise ValueError(f"Unknown calibration method: {method}")
+
+
+def apply_probability_calibrator(calibrator, probabilities) -> np.ndarray:
+    """Apply a fitted probability calibrator without refitting."""
+    if isinstance(calibrator, PlattScaler):
+        return calibrator.predict_proba(probabilities_to_logits(probabilities))
+    if isinstance(calibrator, IsotonicCalibrator):
+        return calibrator.predict_proba(probabilities)
+    raise TypeError("calibrator must be a PlattScaler or IsotonicCalibrator")
+
+
 def expected_calibration_error(y_true, p_pred, n_bins: int = 10) -> float:
     """Compute fixed-width expected calibration error."""
     y = np.asarray(y_true).astype(int)
@@ -202,6 +244,38 @@ def expected_calibration_error(y_true, p_pred, n_bins: int = 10) -> float:
         bin_observed = float(np.mean(y[mask]))
         ece += (np.sum(mask) / len(y)) * abs(bin_confidence - bin_observed)
     return float(ece)
+
+
+def calibration_curve_data(y_true, p_pred, n_bins: int = 10) -> list[dict]:
+    """Return aggregate calibration-curve bins without row-level predictions."""
+    y = np.asarray(y_true).astype(int)
+    p = np.asarray(p_pred).astype(float)
+    if len(y) != len(p):
+        raise ValueError("y_true and p_pred must have the same length")
+    if len(y) == 0:
+        raise ValueError("calibration curve requires at least one row")
+
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    rows = []
+    for index, (lower, upper) in enumerate(zip(bins[:-1], bins[1:])):
+        if upper == 1.0:
+            mask = (p >= lower) & (p <= upper)
+        else:
+            mask = (p >= lower) & (p < upper)
+        n_bin = int(np.sum(mask))
+        rows.append(
+            {
+                "bin": int(index),
+                "lower": float(lower),
+                "upper": float(upper),
+                "n": n_bin,
+                "mean_predicted_probability": (
+                    float(np.mean(p[mask])) if n_bin else math.nan
+                ),
+                "observed_event_rate": float(np.mean(y[mask])) if n_bin else math.nan,
+            }
+        )
+    return rows
 
 
 def calibration_intercept_slope(y_true, p_pred, eps: float = 1e-6) -> dict:
@@ -233,6 +307,7 @@ def calibration_summary(y_true, p_pred, n_bins: int = 10) -> dict:
                 y_true, p_pred, n_bins=n_bins
             ),
             "calibration_bins": int(n_bins),
+            "calibration_curve": calibration_curve_data(y_true, p_pred, n_bins=n_bins),
         }
     )
     return summary

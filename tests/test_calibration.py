@@ -6,11 +6,15 @@ import pytest
 from evaluation.calibration import (
     apply_isotonic_calibrator,
     apply_platt_scaler,
+    apply_probability_calibrator,
+    calibration_curve_data,
+    fit_probability_calibrator,
     fit_isotonic_calibrator,
     fit_platt_scaler,
     logits_to_probabilities,
     platt_calibration_summary,
 )
+from evaluation.metrics import compute_binary_metrics
 
 
 def test_platt_scaler_fits_validation_logits_and_returns_probabilities():
@@ -102,3 +106,57 @@ def test_platt_calibration_summary_is_aggregate_only():
     assert summary["fit_n"] == len(validation_labels)
     assert "probabilities" not in summary
     assert np.all((logits_to_probabilities(validation_logits) >= 0.0))
+
+
+def test_probability_platt_calibrator_uses_validation_only():
+    validation_probabilities = np.asarray([0.05, 0.12, 0.24, 0.65, 0.78, 0.91])
+    validation_labels = np.asarray([0, 0, 0, 1, 1, 1])
+
+    calibrator = fit_probability_calibrator(
+        validation_probabilities,
+        validation_labels,
+        method="platt",
+    )
+    before = calibrator.to_metadata()
+    test_probabilities = apply_probability_calibrator(
+        calibrator,
+        probabilities=[0.10, 0.50, 0.90],
+    )
+    after = calibrator.to_metadata()
+
+    assert before == after
+    assert before["fit_split"] == "validation"
+    assert before["fit_n"] == len(validation_labels)
+    assert test_probabilities.shape == (3,)
+    assert np.all((test_probabilities >= 0.0) & (test_probabilities <= 1.0))
+
+
+def test_calibration_curve_data_is_aggregate_only():
+    rows = calibration_curve_data(
+        y_true=[0, 0, 1, 1],
+        p_pred=[0.10, 0.20, 0.70, 0.90],
+        n_bins=2,
+    )
+
+    assert len(rows) == 2
+    assert set(rows[0]) == {
+        "bin",
+        "lower",
+        "upper",
+        "n",
+        "mean_predicted_probability",
+        "observed_event_rate",
+    }
+    assert "subject_id" not in rows[0]
+
+
+def test_selected_threshold_is_applied_unchanged_to_test():
+    selected_threshold = 0.65
+    test_scores = [0.10, 0.64, 0.65, 0.90]
+    test_labels = [0, 1, 1, 1]
+
+    metrics = compute_binary_metrics(test_labels, test_scores, threshold=selected_threshold)
+
+    assert metrics["threshold"] == selected_threshold
+    assert metrics["tp"] == 2
+    assert metrics["fn"] == 1

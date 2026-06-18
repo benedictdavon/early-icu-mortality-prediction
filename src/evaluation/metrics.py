@@ -11,9 +11,6 @@ from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
     confusion_matrix,
-    f1_score,
-    precision_score,
-    recall_score,
     roc_auc_score,
 )
 
@@ -29,6 +26,12 @@ def _safe_auc_roc(y_true: np.ndarray, y_score: np.ndarray) -> float:
     if np.unique(y_true).size < 2:
         return math.nan
     return float(roc_auc_score(y_true, y_score))
+
+
+def _safe_average_precision(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    if np.unique(y_true).size < 2:
+        return 0.0
+    return float(average_precision_score(y_true, y_score))
 
 
 def compute_binary_metrics(y_true, y_score, threshold: float = 0.5) -> dict:
@@ -48,13 +51,16 @@ def compute_binary_metrics(y_true, y_score, threshold: float = 0.5) -> dict:
     y_pred = (y_score_arr >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y_true_arr, y_pred, labels=[0, 1]).ravel()
 
-    precision = precision_score(y_true_arr, y_pred, zero_division=0)
-    recall = recall_score(y_true_arr, y_pred, zero_division=0)
-    f1 = f1_score(y_true_arr, y_pred, zero_division=0)
+    precision_denominator = tp + fp
+    recall_denominator = tp + fn
+    precision = float(tp / precision_denominator) if precision_denominator else 0.0
+    recall = float(tp / recall_denominator) if recall_denominator else 0.0
+    f1_denominator = precision + recall
+    f1 = float(2 * precision * recall / f1_denominator) if f1_denominator else 0.0
 
     return {
         "auc_roc": _safe_auc_roc(y_true_arr, y_score_arr),
-        "average_precision": float(average_precision_score(y_true_arr, y_score_arr)),
+        "average_precision": _safe_average_precision(y_true_arr, y_score_arr),
         "brier_score": float(brier_score_loss(y_true_arr, y_score_arr)),
         "accuracy": float(accuracy_score(y_true_arr, y_pred)),
         "precision": float(precision),
