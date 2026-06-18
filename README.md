@@ -196,6 +196,47 @@ course-review summary covering TODO traceability, model-suite status, primary
 test metrics, threshold policies, feature provenance, safety notes, and final
 conclusions. See [`docs/final_deliverables.md`](docs/final_deliverables.md).
 
+Final polish reports from a completed overnight run:
+
+```bash
+python src/experiments/generate_final_polish_reports.py \
+  --run-dir results/overnight_20260618_111652
+```
+
+This writes aggregate-only `final_model_report.md`,
+`calibration_report.md`, `bootstrap_ci_report.md`, and
+`ensemble_report.md` under the run directory. Bootstrap paired comparisons and
+multi-model calibrated ensembles require aligned local row-level prediction
+files; the report generator states when those files are unavailable rather than
+fabricating results.
+
+Overnight GPU training run:
+
+```bash
+bash scripts/run_overnight_training.sh
+```
+
+The overnight runner executes cohort selection, baseline and expanded feature
+extraction, preprocessing, the tabular model suite, XGBoost baseline-vs-expanded
+ablation, XGBoost ensemble, MAFNet, and MAFNet ablations. It requires CUDA by
+default and writes logs plus aggregate comparison CSVs under
+`results/overnight_<timestamp>/`, including `all_training_results.csv` and
+`result_csv_index.csv`.
+
+Common overrides:
+
+```bash
+RUN_NAME=overnight_gpu_001 \
+MAFNET_EVENTS_PATH=data/processed/first6h_events.csv \
+MAFNET_COHORT_PATH=data/processed/final_cohort.csv \
+bash scripts/run_overnight_training.sh
+```
+
+Set `SKIP_PREPROCESS=1` to reuse existing processed CSVs, `RUN_MAFNET=0` or
+`RUN_MAFNET_ABLATIONS=0` to skip temporal neural runs, and `REQUIRE_GPU=0` only
+for local dry runs. The script runs `pytest` before training by default; set
+`RUN_PYTEST=0` only when you intentionally want to skip that preflight check.
+
 Optional processed-feature leakage check:
 
 ```bash
@@ -238,19 +279,50 @@ The expanded first-6-hour feature plan is documented in
 
 ## Reported Results
 
-Results from the original course experiment:
+Latest completed local run: `results/overnight_20260618_111652`
+(`2026-06-18`). The run completed preprocessing, tabular model comparison,
+XGBoost feature ablation, legacy XGBoost ensemble training, full MAFNet
+training, MAFNet architecture ablations, final summary generation, and combined
+aggregate CSV collection.
 
-| Model | AUC-ROC | Accuracy | Precision | Recall | F1 |
+Primary tabular comparison uses the validation-selected `balanced_f1` threshold
+applied unchanged to the held-out test split.
+
+| Model | Test AUC-ROC | Test PR-AUC | Brier | F1 | Recall | Precision |
+|---|---:|---:|---:|---:|---:|---:|
+| LightGBM | 0.8475 | 0.6289 | 0.1246 | 0.5755 | 0.6346 | 0.5264 |
+| XGBoost | 0.8473 | 0.6271 | 0.1503 | 0.5808 | 0.7054 | 0.4936 |
+| CatBoost | 0.8454 | 0.6223 | 0.1466 | 0.5742 | 0.7181 | 0.4783 |
+| EBM | 0.8361 | 0.6104 | 0.1195 | 0.5740 | 0.6728 | 0.5005 |
+| ExtraTrees | 0.8356 | 0.6014 | 0.1258 | 0.5713 | 0.6530 | 0.5077 |
+| Random forest | 0.8286 | 0.5819 | 0.1267 | 0.5582 | 0.6898 | 0.4687 |
+| Logistic regression | 0.8188 | 0.5629 | 0.1727 | 0.5431 | 0.6473 | 0.4678 |
+
+LightGBM is the primary final model for reporting. XGBoost is statistically and
+practically near-tied on discrimination in the available aggregate intervals and
+had the highest F1 among the tabular suite at the selected threshold. EBM is a
+useful calibrated/interpretable comparison because it had the best tabular Brier
+score. Do not treat LightGBM as definitively superior unless a paired bootstrap
+comparison on aligned predictions supports that claim.
+
+Expanded features materially improved XGBoost:
+
+| XGBoost feature set | Test AUC-ROC | Test PR-AUC | Brier | F1 | Recall |
 |---|---:|---:|---:|---:|---:|
-| Logistic regression | 0.7876 | 0.7439 | 0.4244 | 0.6402 | 0.5104 |
-| Random forest | 0.8145 | 0.7900 | 0.4971 | 0.6091 | 0.5474 |
-| XGBoost single | 0.8426 | 0.8095 | 0.5370 | 0.6275 | 0.5787 |
-| XGBoost ensemble | 0.8465 | 0.8298 | 0.6419 | 0.4164 | 0.5052 |
+| Baseline features | 0.7853 | 0.5095 | 0.3483 | 0.4990 | 0.7238 |
+| Expanded features | 0.8438 | 0.6228 | 0.1279 | 0.5743 | 0.7195 |
 
-Interpret these as retrospective experimental metrics, not deployment
-performance. Re-running after code or threshold-protocol changes may produce
-different F1/threshold values. Threshold-specific numbers are historical until
-the models are rerun under the corrected validation-threshold protocol.
+MAFNet was implemented and evaluated, but did not outperform the best boosted
+tabular models in this run. The best neural temporal variant was MAFNet-T+S:
+
+| MAFNet variant | Test AUC-ROC | Test PR-AUC | Brier |
+|---|---:|---:|---:|
+| Full MAFNet | 0.8061 | 0.5610 | 0.1282 |
+| Best ablation, MAFNet-T+S | 0.8184 | 0.5896 | 0.1231 |
+
+Interpret all numbers as retrospective academic metrics, not deployment
+performance. See [`docs/results_summary.md`](docs/results_summary.md) for the
+detailed run summary and artifact locations.
 
 ## Methods
 
